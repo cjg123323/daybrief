@@ -88,3 +88,11 @@ def test_write_produces_wallpaper_and_full_page(tmp_path: Path):
     full = out.parent / "full.html"
     assert full.exists() and full.as_uri() in out.read_text("utf-8")
     assert full.read_text("utf-8").count('class="card"') == 2
+
+
+def test_wallpaper_has_click_scroll_rail_full_page_does_not():
+    d = {"date": "2026-10-27", "generated_at": "", "failures": [], "entries": [entry("1")]}
+    wall = dashboard.render([d])
+    assert wall.count('class="rail"') == 2 and "<script>" in wall and 'data-key="left"' in wall
+    full = dashboard.render([d], full=True)
+    assert 'class="rail"' not in full and "<script>" not in full

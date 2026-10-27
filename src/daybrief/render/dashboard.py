@@ -35,12 +35,26 @@ body { background:linear-gradient(135deg,var(--bg-0),var(--bg-1) 60%,#141413);
 a { color:inherit; text-decoration:none; }
 a:hover { text-decoration:underline; }
 .col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden; }
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+.grid > * { min-width:0; }  /* 한 줄 말줄임(nowrap) 텍스트가 열 폭을 밀어내지 않게 */
 /* 바탕화면: Lively가 휠을 넘겨주지 않을 수 있어 스크롤에 기대지 않는다. 넘치면 아래를 흐리게 자르고 '전체 보기'로 */
 .pane { max-height:calc(92vh - 170px); overflow:hidden;
   -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
   mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent); }
 .pane > h2:first-child, .pane > *:first-child > h2:first-child { margin-top:2px; }
+.pane.end { -webkit-mask-image:none; mask-image:none; }
+/* 클릭·드래그로 움직이는 자체 스크롤 막대 (Lively는 클릭·이동은 넘겨주지만 휠은 안 넘겨줄 수 있음) */
+.panewrap { position:relative; padding-right:26px; }
+.rail { position:absolute; top:0; right:0; bottom:0; width:18px; display:flex; flex-direction:column;
+  align-items:center; gap:6px; max-height:calc(92vh - 170px); }
+.rail.hidden { display:none; }
+.rail button { width:18px; height:18px; padding:0; border:1px solid var(--line); border-radius:5px;
+  background:var(--card); color:var(--ink-2); font-size:9px; line-height:1; cursor:pointer; }
+.rail button:hover { color:var(--ink-1); border-color:var(--ink-3); }
+.rail .track { position:relative; flex:1; width:10px; border-radius:5px; background:var(--card); cursor:pointer; }
+.rail .thumb { position:absolute; left:0; width:10px; min-height:28px; border-radius:5px; background:var(--ink-3);
+  cursor:grab; }
+.rail .thumb:active { cursor:grabbing; background:var(--ink-2); }
 .clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
 .clamp1 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .full-link { color:var(--ink-1); font-weight:600; }
@@ -52,6 +66,7 @@ body.full .pane { max-height:none; overflow:visible; -webkit-mask-image:none; ma
 body.full .clamp { display:block; -webkit-line-clamp:unset; }
 body.full .clamp1 { white-space:normal; }
 body.full .card pre.reason { max-height:none; }
+body.full .panewrap { padding-right:0; }
 @media (max-width: 1100px) { .grid { grid-template-columns:1fr; } .col { width:90vw; } }
 header { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
 header h1 { font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em; }
@@ -86,6 +101,58 @@ h2 { font-size:13px; font-weight:600; color:var(--ink-3); text-transform:upperca
 .empty { color:var(--ink-3); padding:14px 4px; }
 footer { color:var(--ink-3); font-size:11px; margin-top:12px; }
 """
+
+
+# 바탕화면 전용 스크롤 막대. 외부 스크립트 없음. 위치는 sessionStorage에 저장 → 10분 자동 새로고침 후에도 유지
+SCROLL_JS = """
+(function () {
+  function setup(wrap) {
+    var pane = wrap.querySelector('.pane'), rail = wrap.querySelector('.rail');
+    var track = rail.querySelector('.track'), thumb = rail.querySelector('.thumb');
+    var key = 'daybrief-scroll-' + wrap.getAttribute('data-key');
+    function max() { return pane.scrollHeight - pane.clientHeight; }
+    function update() {
+      var m = max();
+      if (m <= 1) { rail.classList.add('hidden'); pane.classList.add('end'); return; }
+      rail.classList.remove('hidden');
+      var th = Math.max(28, track.clientHeight * pane.clientHeight / pane.scrollHeight);
+      thumb.style.height = th + 'px';
+      thumb.style.top = ((track.clientHeight - th) * pane.scrollTop / m) + 'px';
+      pane.classList.toggle('end', pane.scrollTop >= m - 2);
+      try { sessionStorage.setItem(key, String(pane.scrollTop)); } catch (e) {}
+    }
+    function by(dy) { pane.scrollTop = Math.max(0, Math.min(max(), pane.scrollTop + dy)); update(); }
+    function page() { return pane.clientHeight * 0.8; }
+    rail.querySelector('.up').addEventListener('click', function () { by(-page()); });
+    rail.querySelector('.down').addEventListener('click', function () { by(page()); });
+    track.addEventListener('mousedown', function (e) {
+      if (e.target === thumb) { return; }
+      by(e.clientY < thumb.getBoundingClientRect().top ? -page() : page());
+    });
+    thumb.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var y0 = e.clientY, s0 = pane.scrollTop, span = Math.max(1, track.clientHeight - thumb.offsetHeight);
+      function move(ev) { pane.scrollTop = s0 + (ev.clientY - y0) * max() / span; update(); }
+      function up() { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+    pane.addEventListener('wheel', function (e) { e.preventDefault(); by(e.deltaY); }, { passive: false });
+    try { var s = sessionStorage.getItem(key); if (s) { pane.scrollTop = Number(s); } } catch (e) {}
+    update();
+    window.addEventListener('resize', update);
+  }
+  var wraps = document.querySelectorAll('.panewrap');
+  for (var i = 0; i < wraps.length; i++) { if (wraps[i].querySelector('.rail')) { setup(wraps[i]); } }
+})();
+"""
+
+
+def _pane(key: str, content: str, *, rail: bool) -> str:
+    bar = ('<div class="rail"><button class="up" title="위로">▲</button>'
+           '<div class="track"><div class="thumb"></div></div>'
+           '<button class="down" title="아래로">▼</button></div>') if rail else ""
+    return f'<div class="panewrap" data-key="{key}"><div class="pane">{content}</div>{bar}</div>'
 
 
 def _a(url: str, text: str, cls: str = "") -> str:
@@ -214,8 +281,8 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         if progress_rows:
             right += _progress(progress_rows)
         body.append(f'<details class="day" open><summary>오늘 · {len(today.get("entries", []))}건</summary>'
-                    f'<div class="grid"><div class="pane">{"".join(left) or ""}</div>'
-                    f'<div class="pane">{right}</div></div></details>')
+                    f'<div class="grid">{_pane("left", "".join(left), rail=not full)}'
+                    f'{_pane("right", right, rail=not full)}</div></details>')
     body.append(f'<footer>daybrief · {refresh_minutes}분마다 자동 새로고침 · '
                 '클릭하면 원문이 브라우저에서 열림</footer>')
     body.append("</div>")
@@ -224,7 +291,7 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"
         f"<title>{html.escape(title)} {html.escape(today['date'])}</title>\n"
         f"<style>{CSS}</style></head>\n" + ('<body class="full">' if full else "<body>") + "\n"
-        + "\n".join(body) + "\n</body></html>\n"
+        + "\n".join(body) + ("" if full else f"\n<script>{SCROLL_JS}</script>") + "\n</body></html>\n"
     )
 
 
