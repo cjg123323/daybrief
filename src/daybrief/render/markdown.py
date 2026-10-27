@@ -45,6 +45,8 @@ def render(digest: dict[str, Any], *, library: dict[str, Any] | None = None) -> 
             it, j = e["item"], e["judgement"]
             venue = it["meta"].get("journal") or it["meta"].get("board") or it["source"]
             parts = [f"**[{it['title']}]({it['url']})**", venue, f"{j['score']:.2f}"]
+            if it["meta"].get("deadline"):  # 원천 데이터의 신청기한 (LLM 추정 아님)
+                parts.append(f"신청기한 {it['meta']['deadline'][:60]}")
             if kind == "paper":
                 parts += paper_links(it["meta"], library)
             lines.append("- " + " · ".join(parts))

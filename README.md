@@ -46,6 +46,12 @@ daybrief progress --config profile.yaml --preview   # LLM 없이: 요약 대상 
 ```
 Claude Code는 오래된 로그를 지우므로 `~/.claude/settings.json`에 `"cleanupPeriodDays": 365`를 권장.
 
+## 정부·지자체 지원사업 (보조금24)
+1. [data.go.kr](https://www.data.go.kr/data/15113968/openapi.do) "행정안전부_대한민국 공공서비스(혜택) 정보" 활용신청 (자동승인).
+2. 마이페이지의 일반 인증키(Decoding)를 **환경변수**로: `[Environment]::SetEnvironmentVariable("DATA_GO_KR_KEY", "<키>", "User")` (파일에 넣지 말 것).
+3. `profile.yaml`의 `sources.gov24`에 지역(`agency_prefixes: [대구광역시]` 처럼 시·도 전체 이름), 분야, 제외 용어를 적고,
+   `notices.situation`에 나이·거주 형태 등 자격 판단에 필요한 상황을 적는다. 카탈로그라서 첫 실행에만 전체가 판정되고 이후엔 새 서비스·새 회차만 올라온다.
+
 ## 새 소스 추가
 `src/daybrief/sources/<name>.py`에 `@register("<name>")` 클래스 하나 (`fetch(since, cfg) -> list[Item]`),
 `sources/__init__.py`에 import 한 줄. 코어는 수정하지 않습니다.

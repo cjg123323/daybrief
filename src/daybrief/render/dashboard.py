@@ -81,6 +81,8 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None) -> str:
     venue = it["meta"].get("journal") or it["meta"].get("board") or it["source"]
     color = KIND_COLOR.get(kind, "#8b8a82")
     meta = [html.escape(str(venue)), f"{j['score']:.2f}"]
+    if it["meta"].get("deadline"):  # 원천 데이터의 신청기한 (LLM 추정 아님)
+        meta.append(f"신청기한 {html.escape(str(it['meta']['deadline'])[:60])}")
     if kind == "paper":
         meta += [_a(u, label) for label, u in paper_link_pairs(it["meta"], library)]
     tag = f'<span class="tag" style="background:{color}">{html.escape(KIND_LABEL.get(kind, kind))}</span>'

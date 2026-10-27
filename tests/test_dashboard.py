@@ -59,3 +59,10 @@ def test_write_reads_recent_digests_and_skips_broken(tmp_path: Path):
     html = out.read_text("utf-8")
     assert out == tmp_path / "dashboard" / "index.html"
     assert "new" in html and "mid" in html and "old" not in html  # days=2, 깨진 파일은 무시
+
+
+def test_deadline_from_source_is_shown():
+    d = {"date": "2026-10-27", "generated_at": "", "failures": [],
+         "entries": [entry("g", kind="notice", title="청년월세 지원", board="보조금24 · 국토교통부",
+                           deadline="2026. 1. 22. ~ 2. 6.")]}
+    assert "신청기한 2026. 1. 22. ~ 2. 6." in dashboard.render([d])
