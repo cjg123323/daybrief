@@ -35,7 +35,13 @@ daybrief run --config profile.yaml
    파일 경로는 등록 시점에 고정되므로 레포를 옮기면 스크립트를 다시 실행한다.
 4. 카드를 클릭하면 원문이 기본 브라우저에서 열린다 (Lively 설정에서 "배경화면 입력"이 켜져 있어야 함, 기본값 켜짐).
    페이지는 10분마다 스스로 새로고침하고, `daybrief run`이 끝날 때마다 파일이 갱신된다.
-- Lively 없이 보려면 `dashboard/index.html`을 브라우저로 열면 된다. 스타일만 바꿨을 때는 `daybrief render --config profile.yaml`로 수집 없이 재생성.
+5. 바탕화면 조작: Lively는 **마우스 휠을 전달하지 않으므로** 열 오른쪽 ▲▼ 버튼·막대 클릭·손잡이 드래그로 스크롤한다.
+   섹션당 `dashboard.max_per_section`개만 보이고, "외 n건 더 보기" / 상단 "전체 펼치기"로 숨긴 카드와 잘린 글을 그 자리에서 펼친다.
+- **첫 클릭이 먹히지 않는 경우:** Lively는 맨 앞 창이 바탕화면일 때만 클릭을 넘긴다. 링크로 브라우저가 열린 뒤
+  바탕화면을 누르면 첫 클릭은 바탕화면 활성화에만 쓰인다. `Win+D`로 바탕화면으로 돌아오면 바로 한 번에 눌린다.
+- 바탕화면에서 `file://` 링크는 열리지 않는다 (Lively가 `https://<hash>.localhost/`로 페이지를 연다).
+  모든 항목을 브라우저에서 보려면 탐색기에서 `dashboard/full.html`을 직접 연다.
+- Lively 없이 보려면 `dashboard/full.html`(또는 `index.html`)을 브라우저로 열면 된다. 스타일만 바꿨을 때는 `daybrief render --config profile.yaml`로 수집 없이 재생성.
 
 ## 프로젝트 진행 요약 (Claude Code 로그, 로컬 전용)
 `profile.yaml`의 `progress.projects`에 **요약할 폴더만** 적는다 (적지 않은 폴더의 대화는 읽지 않음).

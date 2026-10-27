@@ -68,14 +68,17 @@ def test_deadline_from_source_is_shown():
     assert "신청기한 2026. 1. 22. ~ 2. 6." in dashboard.render([d])
 
 
-def test_wallpaper_caps_and_links_to_full_page_which_shows_everything():
+def test_wallpaper_hides_extras_behind_in_page_toggle_full_page_shows_everything():
     d = {"date": "2026-10-27", "generated_at": "", "failures": [],
          "entries": [entry(str(i), kind="notice", title=f"공지{i}", score=1 - i / 100, board="b") for i in range(9)]}
-    wall = dashboard.render([d], max_per_section=4, full_href="file:///C:/x/full.html")
-    assert wall.count('class="card"') == 4 and "외 5건" in wall
-    assert 'href="file:///C:/x/full.html"' in wall and "<body>" in wall
-    full = dashboard.render([d], max_per_section=4, full=True, full_href="file:///C:/x/full.html")
-    assert full.count('class="card"') == 9 and "외 " not in full and '<body class="full">' in full
+    wall = dashboard.render([d], max_per_section=4)
+    # 9장 모두 페이지에 있되 5장은 숨김(extra) → '더 보기'는 페이지 안 버튼, 다른 페이지로 가는 링크가 아님
+    assert wall.count('class="card"') == 4 and wall.count('class="card extra"') == 5
+    assert 'data-act="toggle-all"' in wall and "외 5건 더 보기" in wall and "전체 펼치기" in wall
+    assert "full.html" not in wall and "<body>" in wall
+    full = dashboard.render([d], max_per_section=4, full=True)
+    assert full.count('class="card"') == 9 and 'class="card extra"' not in full and "외 " not in full
+    assert '<body class="full">' in full and 'data-act="toggle-all"' not in full
 
 
 def test_write_produces_wallpaper_and_full_page(tmp_path: Path):
@@ -86,7 +89,7 @@ def test_write_produces_wallpaper_and_full_page(tmp_path: Path):
                                                     "entries": [entry("a"), entry("b")]}), "utf-8")
     out = dashboard.write(config_mod.load(tmp_path / "profile.yaml"))
     full = out.parent / "full.html"
-    assert full.exists() and full.as_uri() in out.read_text("utf-8")
+    assert full.exists() and "file://" not in out.read_text("utf-8").split("<body>")[1].split("프로젝트")[0]
     assert full.read_text("utf-8").count('class="card"') == 2
 
 
