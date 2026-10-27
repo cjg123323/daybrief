@@ -1,0 +1,32 @@
+{
+ "results": [
+  {
+   "id": "https://openalex.org/W3092490523",
+   "title": "Scaling Effects on Controllers for Multirotors",
+   "doi": "https://doi.org/10.1109/icuas48674.2020.9214068",
+   "publication_year": 2020,
+   "primary_location": {
+    "source": {
+     "id": "https://openalex.org/S4363608079",
+     "display_name": "International Conference on Unmanned Aircraft Systems (ICUAS)",
+     "issn_l": null,
+     "type": "conference"
+    }
+   }
+  },
+  {
+   "id": "https://openalex.org/W2109734241",
+   "title": "Aerodynamic power control for multirotor aerial vehicles",
+   "doi": "https://doi.org/10.1109/icra.2014.6906906",
+   "publication_year": 2014,
+   "primary_location": {
+    "source": {
+     "id": "https://openalex.org/S4210217939",
+     "display_name": "Proceedings - IEEE International Conference on Robotics and Automation/Proceedings",
+     "issn_l": "1050-4729",
+     "type": "conference"
+    }
+   }
+  }
+ ]
+}

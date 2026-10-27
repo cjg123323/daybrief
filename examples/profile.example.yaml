@@ -1,0 +1,68 @@
+# daybrief 설정 예시. 본인 private 레포에 profile.yaml로 복사해서 채우세요.
+# 이 파일은 공개 레포에 있으므로 실제 개인정보를 넣지 마세요.
+
+research:
+  summary: >
+    (본인 연구를 3~5문장으로. LLM 판정의 기준이 되므로 구체적일수록 좋음.
+    대상 시스템, 핵심 방법, 쓰는 센서/데이터, 관심 없는 인접 분야까지 적으면 정확도가 올라감)
+  core_topics: [topic A, topic B]
+  adjacent_topics: [method C]
+  not_interested: [area D]
+
+# 기관 공지·지원사업 판정 기준 (항목 1, 2). 연구 주제가 아니라 "내 상황에서 행동할 공지인가"로 판정한다.
+# 비우면 공지는 전부 탈락한다.
+notices:
+  situation: OO대 OO학부 대학원생 (OO 연구실)
+  interests: [대학원생 장학금·펠로우십, 연구과제·산학 공고 (내 분야), 대학원 학사일정, 관련 세미나·학술대회, 주거 지원]
+  not_interested: [학부생 전용, 취업 박람회·면접 특강, 홍보 인력 모집]
+
+# 진로 선호. 로컬 파일로는 추론 불가 → 직접 작성. 비워두면 채용 소스는 프로필만 보고 판정.
+career:
+  horizon: ""          # 예: "석사 진학 예정. 지금은 산학장학생·인턴, 본격 구직은 졸업 시점"
+  roles: []            # 관심 직무. 예: 상태추정/제어 연구개발, 시뮬레이션·디지털트윈
+  company_types: []    # 예: 방산 체계기업, 정부출연연, 자동차/로봇
+  locations: []
+  exclude: []          # 예: 영업, 순수 SW 백엔드
+
+# 구독 논문은 자동 다운로드하지 않고, 다이제스트에 학교 프록시 경유 링크만 붙인다 (DESIGN.md §8.7)
+library:
+  proxy_prefix: ""      # TODO: 도서관 프록시 접두어 (도서관 홈페이지에서 확인). 비우면 DOI 링크 그대로
+  pdf_inbox: false      # true면 inbox/papers/에 직접 넣은 PDF를 로컬에서 본문 요약 (opt-in)
+
+# 3단계: 바탕화면 HTML. `daybrief run` / `daybrief render`가 <profile.yaml 폴더>/dashboard/index.html을 쓴다.
+# Lively Wallpaper에 이 파일을 웹 배경화면으로 등록하면 바탕화면에 뜬다 (README "바탕화면" 참고).
+dashboard:
+  dir: dashboard
+  days: 3               # 최신 며칠치를 보여줄지 (첫 날만 펼침)
+  refresh_minutes: 10   # 페이지 자동 새로고침 주기
+  max_per_section: 8    # 섹션당 카드 수 (넘치면 "외 n건")
+
+lookback_days: 2
+timezone: Asia/Seoul   # 날짜 기준. Actions(UTC)에서도 KST 날짜로 저장
+
+filter:
+  threshold: 0.6            # 다이제스트에 올릴 최소 점수
+  threshold_by_kind: {notice: 0.5}   # 종류별 덮어쓰기 (선택). 공지는 제목만 보고 판정되는 경우가 많아 낮게
+  summarize_threshold: 0.8  # 개별 요약(5번) 대상
+  max_summaries: 5
+  include_keywords: []      # 논문 1차 필터 (비우면 전부 LLM 판정 → 비용 증가)
+  exclude_keywords: []
+
+llm:
+  provider: anthropic       # ANTHROPIC_API_KEY 환경변수 필요
+  models:
+    cheap: claude-haiku-5-5
+    smart: claude-sonnet-5-5
+
+sources:
+  openalex:
+    mailto: you@example.com
+    journals_file: journals.yaml
+  html_list:
+    boards:
+      - id: example-notice
+        kind: notice
+        url: https://example.ac.kr/notice
+        row: "table tbody tr"
+        title: "td.subject a"
+        date: "td.date"
