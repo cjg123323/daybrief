@@ -34,7 +34,13 @@ body { background:linear-gradient(135deg,var(--bg-0),var(--bg-1) 60%,#141413);
   overflow:hidden; }
 a { color:inherit; text-decoration:none; }
 a:hover { text-decoration:underline; }
-.col { position:absolute; top:4vh; right:5vw; width:min(760px,55vw); max-height:92vh; overflow:hidden; }
+.col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+.pane { max-height:calc(92vh - 170px); overflow-y:auto; padding-right:6px; }
+.pane > h2:first-child, .pane > *:first-child > h2:first-child { margin-top:2px; }
+.pane::-webkit-scrollbar { width:6px; }
+.pane::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
+@media (max-width: 1100px) { .grid { grid-template-columns:1fr; } .col { width:90vw; } }
 header { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
 header h1 { font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em; }
 header .date { color:var(--ink-2); font-size:16px; }
@@ -100,10 +106,17 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None) -> str:
     return "\n".join(parts)
 
 
-def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_section: int) -> str:
+LEFT_KINDS = ("paper", "page_change", "news", "progress")   # 연구 쪽: 논문·연구실·기관 뉴스
+RIGHT_KINDS = ("notice", "job")                             # 행동 쪽: 공지·지원사업·채용
+
+
+def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_section: int,
+         kinds: tuple[str, ...] | None = None, empty: str = "관련 항목이 없습니다.") -> str:
     entries = digest.get("entries", [])
     out = []
     for kind, label in SECTIONS:
+        if kinds is not None and kind not in kinds:
+            continue
         group = sorted((e for e in entries if e["item"]["kind"] == kind), key=lambda e: -e["judgement"]["score"])
         if not group:
             continue
@@ -112,8 +125,8 @@ def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_sect
         if len(group) > max_per_section:
             rest = len(group) - max_per_section
             out.append(f'<div class="more">외 {rest}건 → data/digest/{html.escape(digest["date"])}.md</div>')
-    if not out:
-        out.append('<div class="empty">관련 항목이 없습니다.</div>')
+    if not out and empty:
+        out.append(f'<div class="empty">{html.escape(empty)}</div>')
     return "\n".join(out)
 
 
@@ -164,14 +177,21 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         body.append(f'<div class="fail"><b>⚠ 수집 실패</b> · {fails}</div>')
     if not digests:
         body.append('<div class="empty">아직 다이제스트가 없습니다. <code>daybrief run</code>을 먼저 실행하세요.</div>')
-    for i, d in enumerate(digests):
-        opened = " open" if i == 0 else ""
-        label = "오늘" if i == 0 else html.escape(d["date"])
-        n = len(d.get("entries", []))
-        body.append(f'<details class="day"{opened}><summary>{label} · {n}건</summary>'
-                    f'{_day(d, library=library, max_per_section=max_per_section)}</details>')
-    if progress_rows:
-        body.append(_progress(progress_rows))
+        if progress_rows:
+            body.append(_progress(progress_rows))
+    else:
+        # 오늘: 두 열 (왼쪽 연구, 오른쪽 공지·지원사업). 각 열은 넘치면 그 안에서 스크롤 → 화면 밖으로 잘리지 않는다
+        kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section}
+        left = [_day(today, kinds=LEFT_KINDS, empty="" if today.get("entries") else "관련 항목이 없습니다.", **kw)]
+        if progress_rows:
+            left.append(_progress(progress_rows))
+        for d in digests[1:]:  # 지난 날짜는 왼쪽 열 아래에 접어서
+            left.append(f'<details class="day"><summary>{html.escape(d["date"])} · {len(d.get("entries", []))}건'
+                        f'</summary>{_day(d, **kw)}</details>')
+        right = _day(today, kinds=RIGHT_KINDS, empty="새 공지·지원사업 없음", **kw)
+        body.append(f'<details class="day" open><summary>오늘 · {len(today.get("entries", []))}건</summary>'
+                    f'<div class="grid"><div class="pane">{"".join(left) or ""}</div>'
+                    f'<div class="pane">{right}</div></div></details>')
     body.append(f'<footer>daybrief · {refresh_minutes}분마다 자동 새로고침 · '
                 '클릭하면 원문이 브라우저에서 열림</footer>')
     body.append("</div>")

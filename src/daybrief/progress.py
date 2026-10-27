@@ -250,6 +250,8 @@ def update(cfg: dict[str, Any], llm: LLM, today: date, *, claude_root: Path | No
     made: list[dict[str, str]] = []
     for act in collect(cfg, today, claude_root=claude_root):
         text = llm.complete(DAILY_SYSTEM, activity_text(act), model=model_daily, max_tokens=900)
+        if not text.strip():  # 빈 요약을 저장하면 그날은 영영 다시 안 만들어지고 주간·월간까지 오염된다
+            raise RuntimeError(f"empty daily summary for {act.project} {act.day}")
         path = out_dir / _safe(act.project) / "daily" / f"{act.day.isoformat()}.md"
         evidence = (f"Claude Code 세션 {', '.join(sorted(s[:8] for s in act.sessions)) or '-'} · "
                     f"커밋 {', '.join(c.split()[0] for c in act.commits) or '-'} · basis: log · {model_daily}")
@@ -277,9 +279,14 @@ def _rollup(proj_dir: Path, llm: LLM, today: date, model: str) -> list[dict[str,
         path = proj_dir / period / f"{label}.md"
         if path.exists():
             continue
-        src = "\n\n".join(f"## {d.isoformat()}\n{_body(dailies[d].read_text('utf-8'))}" for d in sorted(days))
+        bodies = {d: _body(dailies[d].read_text("utf-8")) for d in sorted(days)}
+        if not all(bodies.values()):  # 빈 일간이 섞여 있으면 상위 요약을 만들지 않는다 (일간을 고쳐 다시 만들 때까지)
+            continue
+        src = "\n\n".join(f"## {d.isoformat()}\n{b}" for d, b in bodies.items())
         word = "weekly" if period == "weekly" else "monthly"
         text = llm.complete(PERIOD_SYSTEM.format(period=word), src[:20000], model=model, max_tokens=900)
+        if not text.strip():
+            raise RuntimeError(f"empty {period} summary for {proj_dir.name} {label}")
         name = proj_dir.name
         _write(path, f"{name} {label} ({'주간' if period == 'weekly' else '월간'})",
                f"일간 요약 {len(days)}개 ({sorted(days)[0]}~{sorted(days)[-1]}) · basis: log · {model}", text)

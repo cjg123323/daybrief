@@ -6,7 +6,7 @@ import re
 import sys
 from typing import Any
 
-from daybrief.llm import LLM
+from daybrief.llm import LLM, LLMIncomplete
 from daybrief.models import Item, Judgement, Summary
 
 JUDGE_SYSTEM = """You screen new items for one researcher. Decide relevance strictly by the profile.
@@ -83,10 +83,14 @@ def judge(items: list[Item], llm: LLM, *, profile: str, feedback: list[dict], mo
         user = "\n\n".join(
             f"[{i}] ({it.kind}) {it.title}\n{it.body[:1500]}" for i, it in enumerate(chunk)
         )
-        parsed = _parse_json_array(llm.complete(system, user, model=model, max_tokens=320 * len(chunk) + 256))
-        if not parsed:  # 응답이 잘렸거나 JSON이 아님. 조용히 버리면 항목이 "본 것"으로 남아 다시 안 보이므로 알린다
+        try:
+            parsed = _parse_json_array(llm.complete(system, user, model=model, max_tokens=320 * len(chunk) + 256))
+        except LLMIncomplete as e:  # 이 배치만 건너뛴다. 판정 없는 항목은 호출부가 다음 실행으로 미룬다
+            print(f"[judge] WARNING: batch {start // batch}: {e}", file=sys.stderr)
+            parsed = []
+        if not parsed:
             print(f"[judge] WARNING: batch {start // batch} ({len(chunk)} items) returned no parseable JSON; "
-                  "items skipped (re-run with --no-dedupe)", file=sys.stderr)
+                  "deferred to next run", file=sys.stderr)
         for r in parsed:
             i = r.get("i")
             if not isinstance(i, int) or not 0 <= i < len(chunk):

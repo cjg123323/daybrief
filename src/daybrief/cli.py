@@ -69,6 +69,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         failures.append({"source": "llm", "error": msg[:200]})
         n = store.forget_unjudged([it.id for it in cand])
         print(f"[llm] FAILED: {msg[:200]} — {n} items deferred to next run", file=sys.stderr)
+    # 배치 일부만 실패(잘림·JSON 아님)해도 판정 못 받은 항목은 '본 적 없음'으로 되돌려 다음 실행에서 재판정
+    judged = {j.item_id for j in judgements}
+    missing = [it.id for it in cand if it.id not in judged]
+    if missing and not llm_failed and not args.no_dedupe:
+        print(f"[judge] {store.forget_unjudged(missing)} unjudged items deferred to next run", file=sys.stderr)
     by_id = {it.id: it for it in cand}
     entries = []
     kept = sorted((j for j in judgements

@@ -115,6 +115,29 @@ def test_update_is_idempotent_and_rolls_up_finished_week(tmp_path: Path):
     assert len(llm.calls) == n                                        # 두 번째 실행은 LLM 호출 없음
 
 
+def test_empty_summary_is_not_saved_and_blocks_rollup(tmp_path: Path):
+    import pytest
+
+    cfg, logs, _ = setup(tmp_path)
+
+    class EmptyLLM(FakeLLM):
+        def complete(self, system, user, *, model, max_tokens=1024):
+            return ""
+
+    with pytest.raises(RuntimeError, match="empty daily"):
+        progress.update(cfg, EmptyLLM(), date(2026, 10, 27), claude_root=logs, model_daily="c", model_period="s")
+    root = Path(cfg["_base_dir"]) / "data" / "progress"
+    assert not list(root.rglob("*.md"))                               # 빈 파일을 남기지 않음 → 다음 실행에서 재시도
+
+    # 예전 버전이 남긴 빈 일간이 있어도 그 주의 주간 요약은 만들지 않는다
+    bad = root / "RLV" / "daily" / "2026-10-20.md"
+    bad.parent.mkdir(parents=True)
+    bad.write_text("# RLV 2026-10-20 (일간)\n\n", "utf-8")
+    llm = FakeLLM()
+    progress._rollup(root / "RLV", llm, date(2026, 10, 27), "s")
+    assert not (root / "RLV" / "weekly").exists() and llm.calls == []
+
+
 def test_progress_shows_in_markdown_and_dashboard(tmp_path: Path):
     cfg, logs, _ = setup(tmp_path)
     made = progress.update(cfg, FakeLLM(), date(2026, 10, 27), claude_root=logs, model_daily="c", model_period="s")
