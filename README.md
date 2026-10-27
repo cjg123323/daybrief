@@ -58,6 +58,23 @@ Claude Code는 오래된 로그를 지우므로 `~/.claude/settings.json`에 `"c
 3. `profile.yaml`의 `sources.gov24`에 지역(`agency_prefixes: [대구광역시]` 처럼 시·도 전체 이름), 분야, 제외 용어를 적고,
    `notices.situation`에 나이·거주 형태 등 자격 판단에 필요한 상황을 적는다. 카탈로그라서 첫 실행에만 전체가 판정되고 이후엔 새 서비스·새 회차만 올라온다.
 
+## 채용·산학 공고 (잡알리오)
+1. data.go.kr "재정경제부_공공기관 채용정보 조회서비스"(15125273) 활용신청. 같은 `DATA_GO_KR_KEY`를 쓰지만 API마다 신청이 따로 필요하다.
+2. `sources.job_alio.include_terms`에 분야 단어를 적는다 (진행 중 공고 중 기관·제목·자격요건에 이 단어가 있는 것만 판정).
+3. 판정은 **연구 → 공고 매칭**: 공고 요구 ↔ 내 연구 근거 쌍을 대야만 올라가고, 카드의 "매칭 근거"에 쌍이 표시된다.
+   `career`는 시기·직무·지역 필터로만 쓰인다. 민간 기업 공고는 이 API에 없다.
+
+## 기기 간 동기화 (git)
+개인 인스턴스 폴더를 private git 레포로 두고 `profile.yaml`에 `sync: {git: true}`를 켜면,
+`daybrief run`이 시작할 때 `git pull --rebase --autostash`, 끝나면 `data/digest`·`data/progress`만 커밋·push 한다.
+- 같은 날 두 기기가 동시에 올린 digest는 자동으로 합친다. `profile.yaml` 같은 손으로 고치는 파일은 직접 커밋한다.
+- 여러 기기에서 쓰면 `progress.per_device: true` → 일간 요약이 `날짜--컴퓨터이름.md`로 저장되고 주간·월간이 기기를 합친다.
+- 작업 스케줄러에서 push하려면 그 계정에 GitHub 자격 증명이 있어야 한다 (`gh auth login` 후 git이 Git Credential Manager를 쓰면 됨).
+
+## 바탕 이미지
+`dashboard.background`(기본: `<profile.yaml 폴더>/background/`)에 이미지를 넣으면 가장 최근 파일이 대시보드 뒤에 깔리고,
+Daybrief 패널은 반투명 블러로 글씨를 띄운다. 이미지는 `dashboard/bg.*`로 복사된다 (Lively는 대시보드 폴더만 읽을 수 있음).
+
 ## 새 소스 추가
 `src/daybrief/sources/<name>.py`에 `@register("<name>")` 클래스 하나 (`fetch(since, cfg) -> list[Item]`),
 `sources/__init__.py`에 import 한 줄. 코어는 수정하지 않습니다.

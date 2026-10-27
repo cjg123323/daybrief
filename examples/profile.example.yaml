@@ -35,7 +35,22 @@ dashboard:
   dir: dashboard
   days: 3               # 최신 며칠치를 보여줄지 (첫 날만 펼침)
   refresh_minutes: 10   # 페이지 자동 새로고침 주기
-  max_per_section: 8    # 섹션당 카드 수 (넘치면 "외 n건")
+  max_per_section: 8    # 섹션당 카드 수 (넘치면 "외 n건 더 보기"로 그 자리에서 펼침)
+  background: background   # 이 폴더에 이미지를 넣으면 가장 최근 파일이 대시보드 뒤에 깔림 (선택)
+
+# 기기 간 동기화 (선택): 이 폴더가 private git 레포일 때. 실행 전 pull, 실행 후 data/digest·data/progress만 push
+sync:
+  git: false
+
+# 항목 6 진행 요약 (선택, 로컬 전용): 여기 적은 폴더에서 한 Claude Code 대화만 요약
+progress:
+  enabled: false
+  per_device: false     # 여러 기기에서 쓰면 true (일간 요약 파일 이름에 컴퓨터 이름)
+  backfill_days: 7
+  privacy_file: init_profile_privacy.yaml
+  projects:
+    - name: my-project
+      path: C:/path/to/my-project
 
 lookback_days: 2
 timezone: Asia/Seoul   # 날짜 기준. Actions(UTC)에서도 KST 날짜로 저장
@@ -58,6 +73,12 @@ sources:
   openalex:
     mailto: you@example.com
     journals_file: journals.yaml
+  # gov24:      # 정부·지자체 지원사업 (README 참고). 키는 환경변수 DATA_GO_KR_KEY
+  #   agency_prefixes: [OO광역시]
+  #   agency_types: [중앙행정기관]
+  #   fields: [주거·자립, 생활안정]
+  # job_alio:   # 공공기관 채용 (README 참고). 공고 요구 ↔ 내 연구 매칭 쌍이 있어야만 올라옴
+  #   include_terms: [제어, 기계, 인턴]
   html_list:
     boards:
       - id: example-notice
