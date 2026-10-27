@@ -41,7 +41,7 @@ a:hover { text-decoration:underline; }
 .pane { max-height:calc(92vh - 170px); overflow:hidden;
   -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
   mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent); }
-.pane > h2:first-child, .pane > *:first-child > h2:first-child { margin-top:2px; }
+.pane .inner > h2:first-child { margin-top:2px; }
 .pane.end { -webkit-mask-image:none; mask-image:none; }
 /* 클릭·드래그로 움직이는 자체 스크롤 막대 (Lively는 클릭·이동은 넘겨주지만 휠은 안 넘겨줄 수 있음) */
 .panewrap { position:relative; padding-right:26px; }
@@ -113,7 +113,7 @@ SCROLL_JS = """
     function max() { return pane.scrollHeight - pane.clientHeight; }
     function update() {
       var m = max();
-      if (m <= 1) { rail.classList.add('hidden'); pane.classList.add('end'); return; }
+      if (m <= 16) { rail.classList.add('hidden'); pane.classList.add('end'); return; }  // 마지막 카드 여백 정도는 무시
       rail.classList.remove('hidden');
       var th = Math.max(28, track.clientHeight * pane.clientHeight / pane.scrollHeight);
       thumb.style.height = th + 'px';
@@ -141,6 +141,10 @@ SCROLL_JS = """
     try { var s = sessionStorage.getItem(key); if (s) { pane.scrollTop = Number(s); } } catch (e) {}
     update();
     window.addEventListener('resize', update);
+    // 펼치기(details)·이미지 로딩 등으로 내용 길이가 바뀌면 막대를 즉시 다시 계산 (막대가 없던 열에도 생김)
+    var inner = pane.querySelector('.inner');
+    if (inner && window.ResizeObserver) { new ResizeObserver(update).observe(inner); }
+    pane.addEventListener('toggle', update, true);  // toggle은 버블링되지 않아 캡처로 받는다
   }
   var wraps = document.querySelectorAll('.panewrap');
   for (var i = 0; i < wraps.length; i++) { if (wraps[i].querySelector('.rail')) { setup(wraps[i]); } }
@@ -152,7 +156,8 @@ def _pane(key: str, content: str, *, rail: bool) -> str:
     bar = ('<div class="rail"><button class="up" title="위로">▲</button>'
            '<div class="track"><div class="thumb"></div></div>'
            '<button class="down" title="아래로">▼</button></div>') if rail else ""
-    return f'<div class="panewrap" data-key="{key}"><div class="pane">{content}</div>{bar}</div>'
+    inner = f'<div class="pane"><div class="inner">{content}</div></div>'  # inner = 길이 변화 감시 대상
+    return f'<div class="panewrap" data-key="{key}">{inner}{bar}</div>'
 
 
 def _a(url: str, text: str, cls: str = "") -> str:
