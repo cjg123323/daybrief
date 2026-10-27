@@ -71,10 +71,10 @@ class Source(Protocol):
 | `openalex` | 4,5 | OpenAlex `/works` API, ISSN 필터 + `from_publication_date` | 골격 구현 |
 | `html_list` | 1,2 | 범용 게시판 스크래퍼. 설정의 CSS 셀렉터로 목록/제목/날짜/링크 추출 | 골격 구현 |
 | `public_api` | 2 | 공공데이터포털·온통청년 등 Open API | 2단계 |
-| `notion_page` | 3 | ① notion.site 공개면 Playwright 렌더링 ② 아니면 공식 Notion API/MCP 접근 가능 여부 먼저 확인 ③ 최후 수단: 로그인 프로필 Playwright (local) | 4단계 |
+| `notion_page` | 3 | ① notion.site 공개면 Playwright 렌더링 ② 아니면 공식 Notion API/MCP 접근 가능 여부 먼저 확인 ③ 최후 수단: 로그인 프로필 Playwright (local). **연구실이 Notion을 정적 사이트로 내보내면 `html_list`(kind: page_change)로 충분** (2026-10-27 적용) | 4단계 |
 | `job_alio` | 채용 | 공공기관 채용정보 오픈API (잡알리오, 2024년부터 개방). 정부출연연·공기업 | 2단계 |
 | `job_boards` | 채용 | 기업 채용 페이지 (html_list 설정 재사용, JS 렌더링이면 playwright). 민간 채용 플랫폼은 공식 API 확인 후 | 2단계 |
-| `claude_logs` | 6 | `~/.claude/projects/*/*.jsonl` + git log | 2단계 |
+| `claude_logs` | 6 | `~/.claude/projects/*/*.jsonl` + git log. 판정 대상이 아니라 요약 대상이라 소스 플러그인이 아닌 `progress.py` 단계로 구현 (`profile.yaml`의 `progress:`, 화이트리스트) | 2단계 (구현 2026-10-27) |
 
 ## 5. 필터·요약 파이프라인
 

@@ -16,4 +16,9 @@ def merge_digest(old: dict[str, Any], new: dict[str, Any], *, rejudged: Iterable
     dropped = set(rejudged) - set(latest)
     entries = [latest.pop(e["item"]["id"], e) for e in old.get("entries", []) if e["item"]["id"] not in dropped]
     entries += list(latest.values())
+    # progress: 이번 실행에서 새로 만든 요약만 들어오므로 앞선 실행분에 덧붙인다 (같은 파일이면 새 것으로)
+    prog = {p["path"]: p for p in old.get("progress", [])}
+    prog.update({p["path"]: p for p in new.get("progress", [])})
+    if prog:
+        new = {**new, "progress": list(prog.values())}
     return {**old, **new, "entries": entries, "failures": new.get("failures", [])}

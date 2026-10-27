@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from daybrief import config as config_mod
+from daybrief import progress
 from daybrief.digest import merge_digest
 from daybrief.llm import make_llm
 from daybrief.pipeline import filter as flt
@@ -91,9 +92,26 @@ def cmd_run(args: argparse.Namespace) -> int:
                 n_sum = cfg["filter"]["max_summaries"]  # 같은 오류로 반복 호출하지 않음
         entries.append(entry)
 
+    # 항목 6: 프로젝트 진행 요약 (로컬 전용). --only를 줬으면 'progress'가 포함될 때만
+    made: list[dict[str, str]] = []
+    if (cfg.get("progress") or {}).get("enabled") and args.where != "cloud" \
+            and (not args.only or "progress" in args.only):
+        try:
+            made = progress.update(cfg, make_llm(cfg["llm"]["provider"]), now.date(),
+                                   model_daily=models.get("cheap", "claude-haiku-5-5"),
+                                   model_period=models.get("smart", "claude-sonnet-5-5"))
+            print(f"[progress] {len(made)} summaries written", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 — 원칙 7. 만든 파일은 남고, 못 만든 날은 다음 실행에서 재시도
+            msg = f"{type(e).__name__}: {e}"
+            if "credit balance" in msg:
+                msg = "API 크레딧 소진 (console.anthropic.com → Plans & Billing)"
+            failures.append({"source": "progress", "error": msg[:200]})
+            llm_failed = True
+            print(f"[progress] FAILED: {msg[:200]}", file=sys.stderr)
+
     today = now.strftime("%Y-%m-%d")
     digest = {"date": today, "generated_at": now.isoformat(),
-              "failures": failures, "entries": entries}
+              "failures": failures, "entries": entries, "progress": made}
     out = data_dir / "digest"
     out.mkdir(parents=True, exist_ok=True)
     json_path = out / f"{today}.json"
@@ -111,6 +129,27 @@ def cmd_render(args: argparse.Namespace) -> int:
     """3단계: 저장된 digest JSON → dashboard/index.html만 다시 생성. 수집·LLM 없음 (스타일 수정 후, 로그온 직후)."""
     cfg = config_mod.load(args.config)
     print(f"wrote {dashboard.write(cfg)}", file=sys.stderr)
+    return 0
+
+
+def cmd_progress(args: argparse.Namespace) -> int:
+    """항목 6 점검용: LLM 없이 요약 대상(끝난 날 중 요약이 없는 날)의 활동량을 보여준다.
+    --preview면 LLM에 보낼 텍스트(마스킹 후)를 data/logs/progress_preview.txt에 저장. 실제 요약은 `daybrief run`."""
+    cfg = config_mod.load(args.config)
+    tz = ZoneInfo(cfg["timezone"])
+    acts = progress.collect(cfg, datetime.now(tz).date())
+    if not (cfg.get("progress") or {}).get("projects"):
+        print("progress.projects가 비어 있습니다 (profile.yaml).", file=sys.stderr)
+        return 1
+    for a in acts:
+        print(f"{a.project:12} {a.day}  세션 {len(a.sessions):2}  요청 {len(a.messages):2}  "
+              f"파일 {len(a.files):2}  명령 {len(a.commands):2}  커밋 {len(a.commits):2}")
+    print(f"요약 대상 {len(acts)}일 (LLM 일간 호출 수와 같음)", file=sys.stderr)
+    if args.preview:
+        f = Path(cfg["_base_dir"]) / cfg["data_dir"] / "logs" / "progress_preview.txt"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("\n\n==========\n\n".join(progress.activity_text(a) for a in acts), "utf-8")
+        print(f"LLM에 보낼 내용(마스킹 후): {f}", file=sys.stderr)
     return 0
 
 
@@ -224,6 +263,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", help="LLM 호출 없이")
     r.add_argument("--no-dedupe", action="store_true", help="이미 본 항목도 다시 처리")
     r.set_defaults(func=cmd_run)
+    pg = sub.add_parser("progress", help="진행 요약 대상 점검 (LLM 없음). 실제 요약은 run이 만든다")
+    pg.add_argument("--config", required=True)
+    pg.add_argument("--preview", action="store_true", help="LLM에 보낼 텍스트를 data/logs/에 저장")
+    pg.set_defaults(func=cmd_progress)
     rd = sub.add_parser("render", help="저장된 digest JSON으로 바탕화면 HTML만 재생성 (LLM·네트워크 없음)")
     rd.add_argument("--config", required=True)
     rd.set_defaults(func=cmd_render)

@@ -1,6 +1,7 @@
 """digest dict → 마크다운. 3단계에서 render/dashboard.py(HTML)가 같은 dict를 입력으로 쓴다."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 SECTIONS = [
@@ -54,6 +55,15 @@ def render(digest: dict[str, Any], *, library: dict[str, Any] | None = None) -> 
                 lines += [f"    {ln}" for ln in s["text"].splitlines()]
                 lines.append("    </details>")
         lines.append("")
-    if not entries:
+    prog = digest.get("progress") or []
+    if prog:
+        names = {"daily": "일간", "weekly": "주간", "monthly": "월간"}
+        lines += [f"## 프로젝트 진행 ({len(prog)})", ""]
+        for p in prog:
+            title = f"{p['project']} {p['label']} {names.get(p['period'], p['period'])}"
+            lines.append(f"- **[{title}]({Path(p['path']).as_uri()})** (근거: log)")
+            lines += [f"  {ln}" for ln in p["text"].splitlines()]
+        lines.append("")
+    if not entries and not prog:
         lines.append("오늘은 관련 항목이 없습니다.")
     return "\n".join(lines) + "\n"

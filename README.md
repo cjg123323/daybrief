@@ -37,6 +37,15 @@ daybrief run --config profile.yaml
    페이지는 10분마다 스스로 새로고침하고, `daybrief run`이 끝날 때마다 파일이 갱신된다.
 - Lively 없이 보려면 `dashboard/index.html`을 브라우저로 열면 된다. 스타일만 바꿨을 때는 `daybrief render --config profile.yaml`로 수집 없이 재생성.
 
+## 프로젝트 진행 요약 (Claude Code 로그, 로컬 전용)
+`profile.yaml`의 `progress.projects`에 **요약할 폴더만** 적는다 (적지 않은 폴더의 대화는 읽지 않음).
+`daybrief run`이 끝난 날마다 일간, 끝난 주·달마다 주간·월간 요약을 `data/progress/<프로젝트>/`에 만든다.
+LLM에는 마스킹(실명·키·이메일·홈 경로)·절단된 요청/편집 파일/명령/커밋만 가고, 원본 로그는 기기 밖으로 나가지 않는다.
+```bash
+daybrief progress --config profile.yaml --preview   # LLM 없이: 요약 대상 날짜와 보낼 내용(data/logs/progress_preview.txt) 확인
+```
+Claude Code는 오래된 로그를 지우므로 `~/.claude/settings.json`에 `"cleanupPeriodDays": 365`를 권장.
+
 ## 새 소스 추가
 `src/daybrief/sources/<name>.py`에 `@register("<name>")` 클래스 하나 (`fetch(since, cfg) -> list[Item]`),
 `sources/__init__.py`에 import 한 줄. 코어는 수정하지 않습니다.
