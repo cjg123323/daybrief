@@ -62,23 +62,16 @@ body.has-bg { background-color:#0f0f0e; background-position:center; background-s
 .rail .thumb { position:absolute; left:0; width:10px; min-height:28px; border-radius:5px; background:var(--ink-3);
   cursor:grab; }
 .rail .thumb:active { cursor:grabbing; background:var(--ink-2); }
-.clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
-.clamp1 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .linkbtn { background:none; border:0; padding:0; font:inherit; font-weight:600; color:var(--ink-1); cursor:pointer; }
 .linkbtn:hover { text-decoration:underline; }
-/* 바탕화면 '더 보기'/'전체 펼치기': 숨긴 카드와 잘린 글을 페이지 안에서 펼친다 */
+/* 바탕화면 '더 보기'/'전체 펼치기': 섹션당 max_per_section 이후 카드를 페이지 안에서 펼친다.
+   글은 자르지 않는다 (열마다 스크롤 막대가 있으므로) */
 .card.extra { display:none; }
 body.showall .card.extra { display:block; }
-body.showall .clamp { display:block; -webkit-line-clamp:unset; }
-body.showall .clamp1 { white-space:normal; }
-body.showall .card pre.reason { max-height:none; }
-/* 전체 보기(브라우저): 일반 페이지처럼 스크롤, 줄임 없음 */
+/* 전체 보기(브라우저): 일반 페이지처럼 스크롤 */
 body.full { overflow:auto; }
 body.full .col { position:static; margin:3vh auto; width:min(1240px,94vw); max-height:none; overflow:visible; }
 body.full .pane { max-height:none; overflow:visible; -webkit-mask-image:none; mask-image:none; }
-body.full .clamp { display:block; -webkit-line-clamp:unset; }
-body.full .clamp1 { white-space:normal; }
-body.full .card pre.reason { max-height:none; }
 body.full .panewrap { padding-right:0; }
 @media (max-width: 1100px) { .grid { grid-template-columns:1fr; } .col { width:90vw; } }
 header { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
@@ -112,7 +105,6 @@ h2 { font-size:13px; font-weight:600; color:var(--ink-3); text-transform:upperca
 .card details.pairs li { margin:2px 0; }
 .card details.pairs .ev { color:var(--ink-3); font-size:12px; }
 .card pre { white-space:pre-wrap; font:inherit; margin:4px 0 0; }
-.card pre.reason { max-height:3.1em; overflow:hidden; }
 .more { color:var(--ink-3); font-size:12px; margin:-2px 0 8px 4px; }
 .empty { color:var(--ink-3); padding:14px 4px; }
 footer { color:var(--ink-3); font-size:11px; margin-top:12px; }
@@ -207,9 +199,9 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None, *, extra: bool = Fa
     tag = f'<span class="tag" style="background:{color}">{html.escape(KIND_LABEL.get(kind, kind))}</span>'
     parts = [
         '<div class="card extra">' if extra else '<div class="card">',  # extra: '더 보기'로 펼칠 때만 보임
-        f'<div class="top">{tag}{_a(it["url"], it["title"], "title clamp")}</div>',
-        f'<div class="meta clamp1">{" · ".join(meta)}</div>',
-        f'<div class="reason clamp1">{html.escape(j["reason"])}</div>',
+        f'<div class="top">{tag}{_a(it["url"], it["title"], "title")}</div>',
+        f'<div class="meta">{" · ".join(meta)}</div>',
+        f'<div class="reason">{html.escape(j["reason"])}</div>',
     ]
     if j.get("pairs"):  # 채용: 공고 요구 ↔ 내 연구 (원칙 8의 매칭 근거)
         rows = "".join(f'<li><b>{html.escape(p["need"])}</b> ↔ {html.escape(p["have"])}'
@@ -259,7 +251,7 @@ def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_sect
 
 def _progress(rows: list[dict[str, str]], *, link: bool = True) -> str:
     """프로젝트별 최근 일간 요약 카드 + 주간 요약(접힘). 링크는 로컬 요약 파일 (원칙 2: 근거 = 로그 요약 파일).
-    link=False(바탕화면): Lively에서 file:// 링크는 열리지 않으므로 제목만. 본문은 '전체 펼치기'로 다 보인다."""
+    link=False(바탕화면): Lively에서 file:// 링크는 열리지 않으므로 제목만 (본문은 전부 보인다)."""
     color = KIND_COLOR["progress"]
     out = [f"<h2>{html.escape(KIND_LABEL.get('progress', 'progress'))}</h2>"]
     by_proj: dict[str, dict[str, dict[str, str]]] = {}
@@ -290,7 +282,7 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
            background: str | None = None) -> str:
     """digests: 최신 날짜가 먼저.
     full=False (바탕화면, Lively): Lively는 휠을 넘겨주지 않으므로 열마다 클릭식 스크롤 막대.
-      카드는 짧게, 섹션당 max_per_section개만 보이고 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
+      글은 자르지 않고, 섹션당 max_per_section개만 보이며 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
     full=True (full.html, 탐색기에서 브라우저로 직접 열기): 모든 항목, 줄임 없음, 일반 스크롤."""
     if full:
         max_per_section = 10**6
@@ -304,10 +296,7 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
     body = [
         '<div class="col">',
         f'<header><h1>{html.escape(title)}</h1><span class="date">{html.escape(today["date"])}</span>'
-        f'<span class="gen">갱신 {html.escape(gen)}'
-        + ("" if full else
-           ' · <button class="linkbtn" data-act="toggle-all" data-label="전체 펼치기">전체 펼치기</button>')
-        + '</span></header>',
+        f'<span class="gen">갱신 {html.escape(gen)}{{TOGGLE_ALL}}</span></header>',  # 숨긴 카드가 있을 때만 채움
         f'<div class="kpis">{kpis}</div>',
     ]
     if today.get("failures"):
@@ -334,6 +323,10 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
     body.append(f'<footer>daybrief · {refresh_minutes}분마다 자동 새로고침 · '
                 '클릭하면 원문이 브라우저에서 열림</footer>')
     body.append("</div>")
+    has_extra = any('class="card extra"' in part for part in body)
+    toggle = (' · <button class="linkbtn" data-act="toggle-all" data-label="전체 펼치기">전체 펼치기</button>'
+              if has_extra else "")
+    body[1] = body[1].replace("{TOGGLE_ALL}", toggle)
     return (
         "<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"

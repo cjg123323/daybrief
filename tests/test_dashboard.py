@@ -99,3 +99,13 @@ def test_wallpaper_has_click_scroll_rail_full_page_does_not():
     assert wall.count('class="rail"') == 2 and "<script>" in wall and 'data-key="left"' in wall
     full = dashboard.render([d], full=True)
     assert 'class="rail"' not in full and "<script>" not in full
+
+
+def test_wallpaper_does_not_truncate_text_and_hides_toggle_when_nothing_hidden():
+    long_reason = "가" * 300
+    d = {"date": "2026-10-27", "generated_at": "", "failures": [],
+         "entries": [entry("1", kind="notice", title="공지", board="b")]}
+    d["entries"][0]["judgement"]["reason"] = long_reason
+    wall = dashboard.render([d], max_per_section=5)
+    assert long_reason in wall and "clamp" not in wall          # 글을 자르지 않음 (스크롤 막대가 있으므로)
+    assert 'data-label="전체 펼치기"' not in wall and "{TOGGLE_ALL}" not in wall  # 숨긴 카드가 없으면 버튼도 없음
