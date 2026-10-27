@@ -11,6 +11,7 @@ from daybrief.models import Item, Judgement, Summary
 
 JUDGE_SYSTEM = """You screen new items for one researcher. Decide relevance strictly by the profile.
 Return ONLY a JSON array: [{{"i": <index>, "relevant": true|false, "score": 0.0-1.0, "reason": "<한국어 한 문장>"}}]
+(job items additionally carry "pairs", see below)
 Each item is tagged with its kind:
 - (paper): judge against `research`. 1.0 = directly on a core topic; 0.6-0.8 = squarely in an adjacent topic
   or a method the researcher would reuse; 0.4-0.5 = loosely related; <0.3 = skip or in `not_interested`.
@@ -18,7 +19,14 @@ Each item is tagged with its kind:
   wants to be told about: scholarships, funding calls, deadlines, events...), NOT against research topics.
   1.0 = matches `notices.interests` and likely actionable; 0.5 = possibly useful; <0.3 = skip.
   If the profile has no `notices` section, mark every notice not relevant.
-- (job): judge by matching concrete requirements to `research` evidence; `career` is only a filter.
+- (job): a job / internship / industry-scholarship posting. Match the posting's CONCRETE requirements or duties
+  to the researcher's existing work in `research` (core_topics, adjacent_topics, summary). Add "pairs":
+  [{{"need": "<요구·직무, 공고 문구 그대로 짧게>", "have": "<내 연구에서 겹치는 점>",
+     "evidence": "<research의 해당 주제>"}}].
+  Only list pairs actually supported by both texts; if there is none, return "pairs": [] and relevant=false.
+  Use `career` only as a filter (timing, role, organization type, location, exclusions);
+  never use it to invent a match.
+  Never suggest changing the research to fit the posting.
 - (page_change): a new post or change on the researcher's OWN lab website. The researcher wants to see these:
   relevant with score >= 0.7 unless it is trivial (typo fix, layout only). Higher if it concerns their research area,
   recruiting, deadlines or lab-wide schedules.
@@ -95,9 +103,14 @@ def judge(items: list[Item], llm: LLM, *, profile: str, feedback: list[dict], mo
             i = r.get("i")
             if not isinstance(i, int) or not 0 <= i < len(chunk):
                 continue  # LLM이 없는 인덱스를 지어내면 버린다
-            out.append(Judgement(item_id=chunk[i].id, relevant=bool(r.get("relevant")),
+            pairs = [{k: str(p.get(k, ""))[:200] for k in ("need", "have", "evidence")}
+                     for p in (r.get("pairs") or []) if isinstance(p, dict) and p.get("need") and p.get("have")]
+            relevant = bool(r.get("relevant"))
+            if chunk[i].kind == "job" and not pairs:
+                relevant = False  # 원칙 8: 매칭 근거 쌍을 못 대면 올리지 않는다 (LLM이 relevant라고 해도)
+            out.append(Judgement(item_id=chunk[i].id, relevant=relevant,
                                  score=float(r.get("score", 0)), reason=str(r.get("reason", "")),
-                                 model=model))
+                                 model=model, pairs=pairs if chunk[i].kind == "job" else []))
     return out
 
 

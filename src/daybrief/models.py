@@ -38,6 +38,9 @@ class Judgement:
     score: float  # 0~1
     reason: str
     model: str
+    # 채용(job)만: 공고 요구 ↔ 내 연구 근거 쌍 [{"need": 공고 요구, "have": 내 연구, "evidence": 프로필 주제}].
+    # 원칙 8: 쌍이 없으면 올리지 않는다. 로드맵 제안의 입력으로 쓰지 않는다.
+    pairs: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass

@@ -10,7 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from daybrief import config as config_mod
-from daybrief import progress
+from daybrief import progress, sync
 from daybrief.digest import merge_digest
 from daybrief.llm import make_llm
 from daybrief.pipeline import filter as flt
@@ -31,6 +31,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     models = cfg["llm"]["models"]
 
     items, failures = [], []
+    do_sync = sync.enabled(cfg) and not args.dry_run
+    if do_sync and (err := sync.pull(cfg)):  # 다른 기기의 digest·progress를 먼저 받는다
+        failures.append({"source": "sync", "error": err})
+        print(f"[sync] {err}", file=sys.stderr)
     for name, scfg in (cfg.get("sources") or {}).items():
         if not scfg.get("enabled") or (args.only and name not in args.only):
             continue
@@ -127,7 +131,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     (out / f"{today}.md").write_text(markdown.render(digest, library=cfg.get("library")), "utf-8")
     print(f"wrote {out / today}.{{json,md}} ({len(digest['entries'])} entries, {len(entries)} new)", file=sys.stderr)
     print(f"wrote {dashboard.write(cfg)}", file=sys.stderr)
-    return 1 if llm_failed else 0  # 작업 스케줄러 '마지막 실행 결과'에 실패가 보이도록
+    sync_failed = False
+    if do_sync:
+        if err := sync.push(cfg, f"daybrief {today} ({sync.device_name()})"):
+            sync_failed = True  # 다음 실행의 pull/push가 다시 시도한다
+            print(f"[sync] {err}", file=sys.stderr)
+        else:
+            print("[sync] pushed", file=sys.stderr)
+    return 1 if llm_failed or sync_failed else 0  # 작업 스케줄러 '마지막 실행 결과'에 실패가 보이도록
 
 
 def cmd_render(args: argparse.Namespace) -> int:

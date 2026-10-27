@@ -12,7 +12,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
 import subprocess
 from collections import Counter
 from dataclasses import dataclass, field
@@ -187,6 +189,20 @@ def _body(md: str) -> str:
     return md.split("\n---\n")[0].split("\n", 1)[-1].strip()
 
 
+def device(cfg: dict[str, Any]) -> str:
+    """일간 요약 파일 이름에 붙일 기기 이름. 기기마다 로그가 다르므로 여러 기기에서 쓰면 켠다 (progress.per_device).
+    환경변수 DAYBRIEF_DEVICE가 있으면 그 값, 없으면 컴퓨터 이름. 끄면 '' → 예전처럼 날짜.md."""
+    if os.environ.get("DAYBRIEF_DEVICE"):
+        return _safe(os.environ["DAYBRIEF_DEVICE"].lower())
+    if (cfg.get("progress") or {}).get("per_device"):
+        return _safe(socket.gethostname().lower())
+    return ""
+
+
+def _daily_path(ddir: Path, day: date, dev: str) -> Path:
+    return ddir / (f"{day.isoformat()}--{dev}.md" if dev else f"{day.isoformat()}.md")
+
+
 def _week_label(d: date) -> str:
     y, w, _ = d.isocalendar()
     return f"{y}-W{w:02d}"
@@ -233,8 +249,11 @@ def collect(cfg: dict[str, Any], today: date, *, claude_root: Path | None = None
             if str(r) not in repos[p["name"]]:
                 repos[p["name"]].append(str(r))
     result = []
+    dev = device(cfg)
     for (name, d), act in sorted(acts.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-        if (out_dir / _safe(name) / "daily" / f"{d.isoformat()}.md").exists():
+        ddir = out_dir / _safe(name) / "daily"
+        # 기기 구분 이전 파일(날짜.md)이 있거나 이 기기의 파일이 이미 있으면 건너뜀. 다른 기기 파일은 상관없음
+        if (ddir / f"{d.isoformat()}.md").exists() or (dev and _daily_path(ddir, d, dev).exists()):
             continue
         for repo in repos[name]:
             act.commits += git_commits(Path(repo), d, tz, terms)
@@ -252,7 +271,7 @@ def update(cfg: dict[str, Any], llm: LLM, today: date, *, claude_root: Path | No
         text = llm.complete(DAILY_SYSTEM, activity_text(act), model=model_daily, max_tokens=900)
         if not text.strip():  # 빈 요약을 저장하면 그날은 영영 다시 안 만들어지고 주간·월간까지 오염된다
             raise RuntimeError(f"empty daily summary for {act.project} {act.day}")
-        path = out_dir / _safe(act.project) / "daily" / f"{act.day.isoformat()}.md"
+        path = _daily_path(out_dir / _safe(act.project) / "daily", act.day, device(cfg))
         evidence = (f"Claude Code 세션 {', '.join(sorted(s[:8] for s in act.sessions)) or '-'} · "
                     f"커밋 {', '.join(c.split()[0] for c in act.commits) or '-'} · basis: log · {model_daily}")
         _write(path, f"{act.project} {act.day.isoformat()} (일간)", evidence, text)
@@ -265,7 +284,12 @@ def update(cfg: dict[str, Any], llm: LLM, today: date, *, claude_root: Path | No
 
 def _rollup(proj_dir: Path, llm: LLM, today: date, model: str) -> list[dict[str, str]]:
     """끝난 주·달 중 아직 요약이 없는 것을 일간 요약으로부터 만든다."""
-    dailies = {date.fromisoformat(f.stem): f for f in (proj_dir / "daily").glob("????-??-??.md")}
+    dailies: dict[date, list[Path]] = {}  # 같은 날 여러 기기 파일이 있을 수 있다 (날짜--기기.md)
+    for f in sorted((proj_dir / "daily").glob("????-??-??*.md")):
+        try:
+            dailies.setdefault(date.fromisoformat(f.stem[:10]), []).append(f)
+        except ValueError:
+            continue
     groups: dict[tuple[str, str], list[date]] = {}
     for d in dailies:
         week_end = d + timedelta(days=6 - d.weekday())
@@ -279,7 +303,7 @@ def _rollup(proj_dir: Path, llm: LLM, today: date, model: str) -> list[dict[str,
         path = proj_dir / period / f"{label}.md"
         if path.exists():
             continue
-        bodies = {d: _body(dailies[d].read_text("utf-8")) for d in sorted(days)}
+        bodies = {d: "\n\n".join(_body(f.read_text("utf-8")) for f in dailies[d]) for d in sorted(days)}
         if not all(bodies.values()):  # 빈 일간이 섞여 있으면 상위 요약을 만들지 않는다 (일간을 고쳐 다시 만들 때까지)
             continue
         src = "\n\n".join(f"## {d.isoformat()}\n{b}" for d, b in bodies.items())

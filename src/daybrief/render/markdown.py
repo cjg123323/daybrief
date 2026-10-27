@@ -51,6 +51,8 @@ def render(digest: dict[str, Any], *, library: dict[str, Any] | None = None) -> 
                 parts += paper_links(it["meta"], library)
             lines.append("- " + " · ".join(parts))
             lines.append(f"  - {j['reason']}")
+            for p in j.get("pairs") or []:  # 채용 매칭 근거 (원칙 8)
+                lines.append(f"  - 매칭: **{p['need']}** ↔ {p['have']} ({p.get('evidence', '')})")
             if e.get("summary"):
                 s = e["summary"]
                 lines.append(f"  - <details><summary>요약 (근거: {s['basis']})</summary>\n")

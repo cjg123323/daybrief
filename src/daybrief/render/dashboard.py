@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ KIND_COLOR = {
 
 CSS = """
 :root { color-scheme: dark;
-  --bg-0:#0f0f0e; --bg-1:#1a1a19; --card:#232322; --line:#33332f;
+  --bg-0:#0f0f0e; --bg-1:#1a1a19; --card:rgba(35,35,34,.78); --line:rgba(255,255,255,.10);
   --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8b8a82; --warn:#c98500; }
 * { box-sizing:border-box; }
 html,body { margin:0; height:100%; }
@@ -34,11 +35,17 @@ body { background:linear-gradient(135deg,var(--bg-0),var(--bg-1) 60%,#141413);
   overflow:hidden; }
 a { color:inherit; text-decoration:none; }
 a:hover { text-decoration:underline; }
-.col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden; }
+/* 바탕 이미지가 있으면 body에 깔리고, Daybrief 패널은 반투명 + 블러로 글씨를 띄운다 */
+body.has-bg { background-color:#0f0f0e; background-position:center; background-size:cover;
+  background-repeat:no-repeat; background-attachment:fixed; }
+.col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden;
+  padding:18px 22px 14px; border-radius:18px; background:rgba(16,16,15,.55);
+  -webkit-backdrop-filter:blur(20px) saturate(1.15); backdrop-filter:blur(20px) saturate(1.15);
+  border:1px solid rgba(255,255,255,.08); box-shadow:0 10px 40px rgba(0,0,0,.35); }
 .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
 .grid > * { min-width:0; }  /* 한 줄 말줄임(nowrap) 텍스트가 열 폭을 밀어내지 않게 */
 /* 바탕화면: Lively가 휠을 넘겨주지 않을 수 있어 스크롤에 기대지 않는다. 넘치면 아래를 흐리게 자르고 '전체 보기'로 */
-.pane { max-height:calc(92vh - 170px); overflow:hidden;
+.pane { max-height:calc(92vh - 205px); overflow:hidden;
   -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
   mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent); }
 .pane .inner > h2:first-child { margin-top:2px; }
@@ -46,7 +53,7 @@ a:hover { text-decoration:underline; }
 /* 클릭·드래그로 움직이는 자체 스크롤 막대 (Lively는 클릭·이동은 넘겨주지만 휠은 안 넘겨줄 수 있음) */
 .panewrap { position:relative; padding-right:26px; }
 .rail { position:absolute; top:0; right:0; bottom:0; width:18px; display:flex; flex-direction:column;
-  align-items:center; gap:6px; max-height:calc(92vh - 170px); }
+  align-items:center; gap:6px; max-height:calc(92vh - 205px); }
 .rail.hidden { display:none; }
 .rail button { width:18px; height:18px; padding:0; border:1px solid var(--line); border-radius:5px;
   background:var(--card); color:var(--ink-2); font-size:9px; line-height:1; cursor:pointer; }
@@ -101,6 +108,9 @@ h2 { font-size:13px; font-weight:600; color:var(--ink-3); text-transform:upperca
 .card .reason { color:var(--ink-2); font-size:13px; margin-top:4px; }
 .card details { margin-top:6px; font-size:13px; color:var(--ink-2); }
 .card details summary { cursor:pointer; color:var(--ink-3); }
+.card details.pairs ul { margin:4px 0 0; padding-left:18px; }
+.card details.pairs li { margin:2px 0; }
+.card details.pairs .ev { color:var(--ink-3); font-size:12px; }
 .card pre { white-space:pre-wrap; font:inherit; margin:4px 0 0; }
 .card pre.reason { max-height:3.1em; overflow:hidden; }
 .more { color:var(--ink-3); font-size:12px; margin:-2px 0 8px 4px; }
@@ -201,6 +211,10 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None, *, extra: bool = Fa
         f'<div class="meta clamp1">{" · ".join(meta)}</div>',
         f'<div class="reason clamp1">{html.escape(j["reason"])}</div>',
     ]
+    if j.get("pairs"):  # 채용: 공고 요구 ↔ 내 연구 (원칙 8의 매칭 근거)
+        rows = "".join(f'<li><b>{html.escape(p["need"])}</b> ↔ {html.escape(p["have"])}'
+                       f'<span class="ev"> · {html.escape(p.get("evidence", ""))}</span></li>' for p in j["pairs"])
+        parts.append(f'<details class="pairs"><summary>매칭 근거 {len(j["pairs"])}</summary><ul>{rows}</ul></details>')
     if e.get("summary"):
         s = e["summary"]
         parts.append(f'<details><summary>요약 (근거: {html.escape(s["basis"])})</summary>'
@@ -272,7 +286,8 @@ def _progress(rows: list[dict[str, str]], *, link: bool = True) -> str:
 
 def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = None,
            refresh_minutes: int = 10, max_per_section: int = 8, title: str = "Daybrief",
-           progress_rows: list[dict[str, str]] | None = None, full: bool = False) -> str:
+           progress_rows: list[dict[str, str]] | None = None, full: bool = False,
+           background: str | None = None) -> str:
     """digests: 최신 날짜가 먼저.
     full=False (바탕화면, Lively): Lively는 휠을 넘겨주지 않으므로 열마다 클릭식 스크롤 막대.
       카드는 짧게, 섹션당 max_per_section개만 보이고 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
@@ -323,9 +338,41 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         "<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"
         f"<title>{html.escape(title)} {html.escape(today['date'])}</title>\n"
-        f"<style>{CSS}</style></head>\n" + ('<body class="full">' if full else "<body>") + "\n"
+        f"<style>{CSS}</style></head>\n" + _body_tag(full, background) + "\n"
         + "\n".join(body) + ("" if full else f"\n<script>{SCROLL_JS}</script>") + "\n</body></html>\n"
     )
+
+
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
+
+
+def _body_tag(full: bool, background: str | None) -> str:
+    classes = " ".join(c for c in ("full" if full else "", "has-bg" if background else "") if c)
+    attrs = f' class="{classes}"' if classes else ""
+    if background:
+        attrs += f' style="background-image:url(\'{html.escape(background, quote=True)}\')"'
+    return f"<body{attrs}>"
+
+
+def place_background(src: Path, out_dir: Path) -> str | None:
+    """배경 이미지를 대시보드 폴더로 복사하고 페이지에서 쓸 상대 URL을 돌려준다. 없으면 None.
+    src가 폴더면 그 안에서 가장 최근에 바뀐 이미지. 같은 폴더에 두는 이유: Lively는 대시보드 폴더를
+    https://<hash>.localhost/ 로 열기 때문에 그 밖의 파일(file://)은 읽지 못한다."""
+    if src.is_dir():
+        imgs = [p for p in src.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+        src = max(imgs, key=lambda p: p.stat().st_mtime) if imgs else src / "__none__"
+    if not src.is_file() or src.suffix.lower() not in IMAGE_EXTS:
+        for old in out_dir.glob("bg.*"):
+            old.unlink(missing_ok=True)  # 배경을 뺐으면 지난 이미지도 치운다
+        return None
+    dst = out_dir / f"bg{src.suffix.lower()}"
+    for old in out_dir.glob("bg.*"):
+        if old != dst:
+            old.unlink(missing_ok=True)
+    st = src.stat()
+    if not dst.exists() or dst.stat().st_size != st.st_size or dst.stat().st_mtime < st.st_mtime:
+        shutil.copy2(src, dst)
+    return f"{dst.name}?v={int(st.st_mtime)}"  # 이미지를 바꾸면 캐시된 옛 이미지를 쓰지 않게
 
 
 def load_recent(digest_dir: Path, days: int) -> list[dict[str, Any]]:
@@ -354,7 +401,8 @@ def write(cfg: dict[str, Any]) -> Path:
 
     kw: dict[str, Any] = {"library": cfg.get("library"), "refresh_minutes": int(dcfg.get("refresh_minutes", 10)),
                           "max_per_section": int(dcfg.get("max_per_section", 6)),
-                          "progress_rows": progress.latest(cfg)}
+                          "progress_rows": progress.latest(cfg),
+                          "background": place_background(base / dcfg.get("background", "background"), out.parent)}
     full_path.write_text(render(digests, full=True, **kw), "utf-8")
     out.write_text(render(digests, **kw), "utf-8")
     return out
