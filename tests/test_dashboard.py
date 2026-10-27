@@ -66,3 +66,25 @@ def test_deadline_from_source_is_shown():
          "entries": [entry("g", kind="notice", title="청년월세 지원", board="보조금24 · 국토교통부",
                            deadline="2026. 1. 22. ~ 2. 6.")]}
     assert "신청기한 2026. 1. 22. ~ 2. 6." in dashboard.render([d])
+
+
+def test_wallpaper_caps_and_links_to_full_page_which_shows_everything():
+    d = {"date": "2026-10-27", "generated_at": "", "failures": [],
+         "entries": [entry(str(i), kind="notice", title=f"공지{i}", score=1 - i / 100, board="b") for i in range(9)]}
+    wall = dashboard.render([d], max_per_section=4, full_href="file:///C:/x/full.html")
+    assert wall.count('class="card"') == 4 and "외 5건" in wall
+    assert 'href="file:///C:/x/full.html"' in wall and "<body>" in wall
+    full = dashboard.render([d], max_per_section=4, full=True, full_href="file:///C:/x/full.html")
+    assert full.count('class="card"') == 9 and "외 " not in full and '<body class="full">' in full
+
+
+def test_write_produces_wallpaper_and_full_page(tmp_path: Path):
+    (tmp_path / "profile.yaml").write_text("dashboard: {max_per_section: 1}\n", "utf-8")
+    dd = tmp_path / "data" / "digest"
+    dd.mkdir(parents=True)
+    (dd / "2026-10-27.json").write_text(json.dumps({"date": "2026-10-27", "generated_at": "", "failures": [],
+                                                    "entries": [entry("a"), entry("b")]}), "utf-8")
+    out = dashboard.write(config_mod.load(tmp_path / "profile.yaml"))
+    full = out.parent / "full.html"
+    assert full.exists() and full.as_uri() in out.read_text("utf-8")
+    assert full.read_text("utf-8").count('class="card"') == 2

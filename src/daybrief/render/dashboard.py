@@ -36,10 +36,22 @@ a { color:inherit; text-decoration:none; }
 a:hover { text-decoration:underline; }
 .col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden; }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
-.pane { max-height:calc(92vh - 170px); overflow-y:auto; padding-right:6px; }
+/* 바탕화면: Lively가 휠을 넘겨주지 않을 수 있어 스크롤에 기대지 않는다. 넘치면 아래를 흐리게 자르고 '전체 보기'로 */
+.pane { max-height:calc(92vh - 170px); overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent); }
 .pane > h2:first-child, .pane > *:first-child > h2:first-child { margin-top:2px; }
-.pane::-webkit-scrollbar { width:6px; }
-.pane::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
+.clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+.clamp1 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.full-link { color:var(--ink-1); font-weight:600; }
+.more a { color:var(--ink-1); font-weight:600; }
+/* 전체 보기(브라우저): 일반 페이지처럼 스크롤, 줄임 없음 */
+body.full { overflow:auto; }
+body.full .col { position:static; margin:3vh auto; width:min(1240px,94vw); max-height:none; overflow:visible; }
+body.full .pane { max-height:none; overflow:visible; -webkit-mask-image:none; mask-image:none; }
+body.full .clamp { display:block; -webkit-line-clamp:unset; }
+body.full .clamp1 { white-space:normal; }
+body.full .card pre.reason { max-height:none; }
 @media (max-width: 1100px) { .grid { grid-template-columns:1fr; } .col { width:90vw; } }
 header { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
 header h1 { font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em; }
@@ -69,7 +81,7 @@ h2 { font-size:13px; font-weight:600; color:var(--ink-3); text-transform:upperca
 .card details { margin-top:6px; font-size:13px; color:var(--ink-2); }
 .card details summary { cursor:pointer; color:var(--ink-3); }
 .card pre { white-space:pre-wrap; font:inherit; margin:4px 0 0; }
-.card pre.reason { max-height:9.5em; overflow:hidden; }
+.card pre.reason { max-height:3.1em; overflow:hidden; }
 .more { color:var(--ink-3); font-size:12px; margin:-2px 0 8px 4px; }
 .empty { color:var(--ink-3); padding:14px 4px; }
 footer { color:var(--ink-3); font-size:11px; margin-top:12px; }
@@ -94,9 +106,9 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None) -> str:
     tag = f'<span class="tag" style="background:{color}">{html.escape(KIND_LABEL.get(kind, kind))}</span>'
     parts = [
         '<div class="card">',
-        f'<div class="top">{tag}{_a(it["url"], it["title"], "title")}</div>',
-        f'<div class="meta">{" · ".join(meta)}</div>',
-        f'<div class="reason">{html.escape(j["reason"])}</div>',
+        f'<div class="top">{tag}{_a(it["url"], it["title"], "title clamp")}</div>',
+        f'<div class="meta clamp1">{" · ".join(meta)}</div>',
+        f'<div class="reason clamp1">{html.escape(j["reason"])}</div>',
     ]
     if e.get("summary"):
         s = e["summary"]
@@ -111,7 +123,8 @@ RIGHT_KINDS = ("notice", "job")                             # 행동 쪽: 공지
 
 
 def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_section: int,
-         kinds: tuple[str, ...] | None = None, empty: str = "관련 항목이 없습니다.") -> str:
+         kinds: tuple[str, ...] | None = None, empty: str = "관련 항목이 없습니다.",
+         more_href: str | None = None) -> str:
     entries = digest.get("entries", [])
     out = []
     for kind, label in SECTIONS:
@@ -124,7 +137,8 @@ def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_sect
         out += [_card(e, library) for e in group[:max_per_section]]
         if len(group) > max_per_section:
             rest = len(group) - max_per_section
-            out.append(f'<div class="more">외 {rest}건 → data/digest/{html.escape(digest["date"])}.md</div>')
+            target = _a(more_href, "전체 보기 ↗") if more_href else f'data/digest/{html.escape(digest["date"])}.md'
+            out.append(f'<div class="more">외 {rest}건 · {target}</div>')
     if not out and empty:
         out.append(f'<div class="empty">{html.escape(empty)}</div>')
     return "\n".join(out)
@@ -157,8 +171,14 @@ def _progress(rows: list[dict[str, str]]) -> str:
 
 def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = None,
            refresh_minutes: int = 10, max_per_section: int = 8, title: str = "Daybrief",
-           progress_rows: list[dict[str, str]] | None = None) -> str:
-    """digests: 최신 날짜가 먼저. 첫 날짜는 펼치고 나머지는 접는다."""
+           progress_rows: list[dict[str, str]] | None = None, full: bool = False,
+           full_href: str | None = None) -> str:
+    """digests: 최신 날짜가 먼저.
+    full=False (바탕화면): Lively는 마우스 휠을 바탕화면에 넘겨주지 않을 수 있으므로 스크롤 없이 한 화면에 들어가게
+      카드를 줄이고 섹션당 max_per_section개만. 나머지는 full_href(전체 보기 페이지)로 연결.
+    full=True (브라우저용 전체 보기): 모든 항목, 일반 페이지처럼 스크롤."""
+    if full:
+        max_per_section = 10**6
     today = digests[0] if digests else {"date": "", "generated_at": "", "failures": [], "entries": []}
     counts: dict[str, int] = {}
     for e in today.get("entries", []):
@@ -169,7 +189,9 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
     body = [
         '<div class="col">',
         f'<header><h1>{html.escape(title)}</h1><span class="date">{html.escape(today["date"])}</span>'
-        f'<span class="gen">갱신 {html.escape(gen)}</span></header>',
+        f'<span class="gen">갱신 {html.escape(gen)}'
+        + (f' · {_a(full_href, "전체 보기 ↗", "full-link")}' if full_href and not full else "")
+        + '</span></header>',
         f'<div class="kpis">{kpis}</div>',
     ]
     if today.get("failures"):
@@ -180,15 +202,17 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         if progress_rows:
             body.append(_progress(progress_rows))
     else:
-        # 오늘: 두 열 (왼쪽 연구, 오른쪽 공지·지원사업). 각 열은 넘치면 그 안에서 스크롤 → 화면 밖으로 잘리지 않는다
-        kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section}
+        # 오늘: 두 열 (왼쪽 연구, 오른쪽 공지·지원사업)
+        kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section,
+                              "more_href": None if full else full_href}
         left = [_day(today, kinds=LEFT_KINDS, empty="" if today.get("entries") else "관련 항목이 없습니다.", **kw)]
-        if progress_rows:
-            left.append(_progress(progress_rows))
         for d in digests[1:]:  # 지난 날짜는 왼쪽 열 아래에 접어서
             left.append(f'<details class="day"><summary>{html.escape(d["date"])} · {len(d.get("entries", []))}건'
                         f'</summary>{_day(d, **kw)}</details>')
+        # 진행 요약은 오른쪽 열 아래 (논문 카드가 길어 왼쪽은 공간이 모자람)
         right = _day(today, kinds=RIGHT_KINDS, empty="새 공지·지원사업 없음", **kw)
+        if progress_rows:
+            right += _progress(progress_rows)
         body.append(f'<details class="day" open><summary>오늘 · {len(today.get("entries", []))}건</summary>'
                     f'<div class="grid"><div class="pane">{"".join(left) or ""}</div>'
                     f'<div class="pane">{right}</div></div></details>')
@@ -199,7 +223,8 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         "<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"
         f"<title>{html.escape(title)} {html.escape(today['date'])}</title>\n"
-        f"<style>{CSS}</style></head>\n<body>\n" + "\n".join(body) + "\n</body></html>\n"
+        f"<style>{CSS}</style></head>\n" + ('<body class="full">' if full else "<body>") + "\n"
+        + "\n".join(body) + "\n</body></html>\n"
     )
 
 
@@ -217,16 +242,18 @@ def load_recent(digest_dir: Path, days: int) -> list[dict[str, Any]]:
 
 
 def write(cfg: dict[str, Any]) -> Path:
-    """설정의 data_dir/digest → dashboard.dir/index.html. 경로를 돌려준다."""
+    """설정의 data_dir/digest → dashboard.dir/index.html(바탕화면) + full.html(전체 보기). index 경로를 돌려준다."""
     base = Path(cfg["_base_dir"])
     dcfg = cfg.get("dashboard") or {}
     digests = load_recent(base / cfg["data_dir"] / "digest", int(dcfg.get("days", 3)))
     out = base / dcfg.get("dir", "dashboard") / "index.html"
+    full_path = out.parent / "full.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     from daybrief import progress  # 순환 import 방지 (progress → profiling → ...)
 
-    out.write_text(render(digests, library=cfg.get("library"),
-                          refresh_minutes=int(dcfg.get("refresh_minutes", 10)),
-                          max_per_section=int(dcfg.get("max_per_section", 8)),
-                          progress_rows=progress.latest(cfg)), "utf-8")
+    kw: dict[str, Any] = {"library": cfg.get("library"), "refresh_minutes": int(dcfg.get("refresh_minutes", 10)),
+                          "max_per_section": int(dcfg.get("max_per_section", 6)),
+                          "progress_rows": progress.latest(cfg)}
+    full_path.write_text(render(digests, full=True, **kw), "utf-8")
+    out.write_text(render(digests, full_href=full_path.resolve().as_uri(), **kw), "utf-8")
     return out
