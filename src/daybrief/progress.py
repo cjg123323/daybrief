@@ -329,6 +329,8 @@ def latest(cfg: dict[str, Any]) -> list[dict[str, str]]:
             files = sorted((proj_dir / period).glob("*.md"))
             if files:
                 f = files[-1]
-                rows.append({"project": proj_dir.name, "period": period, "label": f.stem, "path": str(f),
+                rows.append({"project": proj_dir.name, "period": period,
+                             "label": f.stem.split("--")[0],  # 기기 이름(날짜--기기)은 표시하지 않음
+                             "path": str(f),
                              "text": _body(f.read_text("utf-8"))})
     return rows

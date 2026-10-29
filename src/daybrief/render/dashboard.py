@@ -27,6 +27,8 @@ KIND_COLOR = {
 CSS = """
 :root { color-scheme: dark;
   --bg-0:#0f0f0e; --bg-1:#1a1a19; --card:rgba(35,35,34,.78); --line:rgba(255,255,255,.10);
+  /* 화면 아래 작업표시줄 높이(dashboard.bottom_inset). 패널은 위·아래 --gap만큼 띄우고 작업표시줄 위에서 끝난다 */
+  --inset-bottom:48px; --gap:24px; --panel-h:calc(100vh - var(--inset-bottom) - 2 * var(--gap));
   --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8b8a82; --warn:#c98500; }
 * { box-sizing:border-box; }
 html,body { margin:0; height:100%; }
@@ -38,14 +40,14 @@ a:hover { text-decoration:underline; }
 /* 바탕 이미지가 있으면 body에 깔리고, Daybrief 패널은 반투명 + 블러로 글씨를 띄운다 */
 body.has-bg { background-color:#0f0f0e; background-position:center; background-size:cover;
   background-repeat:no-repeat; background-attachment:fixed; }
-.col { position:absolute; top:4vh; right:4vw; width:min(1240px,64vw); max-height:92vh; overflow:hidden;
+.col { position:absolute; top:var(--gap); right:4vw; width:min(1240px,64vw); max-height:var(--panel-h); overflow:hidden;
   padding:18px 22px 14px; border-radius:18px; background:rgba(16,16,15,.55);
   -webkit-backdrop-filter:blur(20px) saturate(1.15); backdrop-filter:blur(20px) saturate(1.15);
   border:1px solid rgba(255,255,255,.08); box-shadow:0 10px 40px rgba(0,0,0,.35); }
 .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
 .grid > * { min-width:0; }  /* 한 줄 말줄임(nowrap) 텍스트가 열 폭을 밀어내지 않게 */
 /* 바탕화면: Lively가 휠을 넘겨주지 않을 수 있어 스크롤에 기대지 않는다. 넘치면 아래를 흐리게 자르고 '전체 보기'로 */
-.pane { max-height:calc(92vh - 205px); overflow:hidden;
+.pane { max-height:calc(var(--panel-h) - 190px); overflow:hidden;
   -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
   mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent); }
 .pane .inner > h2:first-child { margin-top:2px; }
@@ -53,7 +55,7 @@ body.has-bg { background-color:#0f0f0e; background-position:center; background-s
 /* 클릭·드래그로 움직이는 자체 스크롤 막대 (Lively는 클릭·이동은 넘겨주지만 휠은 안 넘겨줄 수 있음) */
 .panewrap { position:relative; padding-right:26px; }
 .rail { position:absolute; top:0; right:0; bottom:0; width:18px; display:flex; flex-direction:column;
-  align-items:center; gap:6px; max-height:calc(92vh - 205px); }
+  align-items:center; gap:6px; max-height:calc(var(--panel-h) - 190px); }
 .rail.hidden { display:none; }
 .rail button { width:18px; height:18px; padding:0; border:1px solid var(--line); border-radius:5px;
   background:var(--card); color:var(--ink-2); font-size:9px; line-height:1; cursor:pointer; }
@@ -120,7 +122,20 @@ SCROLL_JS = """
     var track = rail.querySelector('.track'), thumb = rail.querySelector('.thumb');
     var key = 'daybrief-scroll-' + wrap.getAttribute('data-key');
     function max() { return pane.scrollHeight - pane.clientHeight; }
+    function fit() {
+      // 열 높이 = 작업표시줄(--inset-bottom) + 여백(--gap) 위까지.
+      // 상단 안내문 줄 수가 달라도 아래가 잘리지 않게 실제 위치로 계산
+      var cs = getComputedStyle(document.documentElement);
+      var inset = parseFloat(cs.getPropertyValue('--inset-bottom')) || 0;
+      var gap = parseFloat(cs.getPropertyValue('--gap')) || 0;
+      var foot = document.querySelector('footer');
+      var below = foot ? foot.offsetHeight + 12 : 0;  // footer + margin
+      // 14 = 패널 아래 padding
+      var avail = window.innerHeight - inset - gap - 14 - below - pane.getBoundingClientRect().top;
+      if (avail > 120) { pane.style.maxHeight = avail + 'px'; rail.style.maxHeight = avail + 'px'; }
+    }
     function update() {
+      fit();
       var m = max();
       if (m <= 16) { rail.classList.add('hidden'); pane.classList.add('end'); return; }  // 마지막 카드 여백 정도는 무시
       rail.classList.remove('hidden');
@@ -279,7 +294,7 @@ def _progress(rows: list[dict[str, str]], *, link: bool = True) -> str:
 def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = None,
            refresh_minutes: int = 10, max_per_section: int = 8, title: str = "Daybrief",
            progress_rows: list[dict[str, str]] | None = None, full: bool = False,
-           background: str | None = None) -> str:
+           background: str | None = None, bottom_inset: int = 48) -> str:
     """digests: 최신 날짜가 먼저.
     full=False (바탕화면, Lively): Lively는 휠을 넘겨주지 않으므로 열마다 클릭식 스크롤 막대.
       글은 자르지 않고, 섹션당 max_per_section개만 보이며 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
@@ -331,7 +346,8 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         "<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"
         f"<title>{html.escape(title)} {html.escape(today['date'])}</title>\n"
-        f"<style>{CSS}</style></head>\n" + _body_tag(full, background) + "\n"
+        f"<style>{CSS}\n:root {{ --inset-bottom:{max(0, int(bottom_inset))}px; }}</style></head>\n"
+        + _body_tag(full, background) + "\n"
         + "\n".join(body) + ("" if full else f"\n<script>{SCROLL_JS}</script>") + "\n</body></html>\n"
     )
 
@@ -351,9 +367,14 @@ def place_background(src: Path, out_dir: Path) -> str | None:
     """배경 이미지를 대시보드 폴더로 복사하고 페이지에서 쓸 상대 URL을 돌려준다. 없으면 None.
     src가 폴더면 그 안에서 가장 최근에 바뀐 이미지. 같은 폴더에 두는 이유: Lively는 대시보드 폴더를
     https://<hash>.localhost/ 로 열기 때문에 그 밖의 파일(file://)은 읽지 못한다."""
+    def stamp(p: Path) -> float:
+        # 복사해 넣은 파일은 수정 시각이 원본 날짜(예: 2022년) 그대로라, 폴더에 들어온 시각(Windows st_ctime)도 본다
+        st = p.stat()
+        return max(st.st_mtime, st.st_ctime)
+
     if src.is_dir():
         imgs = [p for p in src.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
-        src = max(imgs, key=lambda p: p.stat().st_mtime) if imgs else src / "__none__"
+        src = max(imgs, key=stamp) if imgs else src / "__none__"
     if not src.is_file() or src.suffix.lower() not in IMAGE_EXTS:
         for old in out_dir.glob("bg.*"):
             old.unlink(missing_ok=True)  # 배경을 뺐으면 지난 이미지도 치운다
@@ -362,10 +383,13 @@ def place_background(src: Path, out_dir: Path) -> str | None:
     for old in out_dir.glob("bg.*"):
         if old != dst:
             old.unlink(missing_ok=True)
-    st = src.stat()
-    if not dst.exists() or dst.stat().st_size != st.st_size or dst.stat().st_mtime < st.st_mtime:
+    st, ver = src.stat(), int(stamp(src))
+    marker = out_dir / ".bg-source"  # 어떤 원본을 복사했는지 기록 → 다른 사진으로 바꾸면 날짜와 상관없이 다시 복사
+    sig = f"{src.resolve()}|{st.st_size}|{ver}"
+    if not dst.exists() or not marker.exists() or marker.read_text("utf-8") != sig:
         shutil.copy2(src, dst)
-    return f"{dst.name}?v={int(st.st_mtime)}"  # 이미지를 바꾸면 캐시된 옛 이미지를 쓰지 않게
+        marker.write_text(sig, "utf-8")
+    return f"{dst.name}?v={ver}-{st.st_size}"  # 이미지를 바꾸면 캐시된 옛 이미지를 쓰지 않게
 
 
 def load_recent(digest_dir: Path, days: int) -> list[dict[str, Any]]:
@@ -395,7 +419,9 @@ def write(cfg: dict[str, Any]) -> Path:
     kw: dict[str, Any] = {"library": cfg.get("library"), "refresh_minutes": int(dcfg.get("refresh_minutes", 10)),
                           "max_per_section": int(dcfg.get("max_per_section", 6)),
                           "progress_rows": progress.latest(cfg),
-                          "background": place_background(base / dcfg.get("background", "background"), out.parent)}
+                          "background": place_background(base / dcfg.get("background", "background"), out.parent),
+                          # 작업표시줄 높이(px). Windows 11 기본 48, 자동 숨김이면 0
+                          "bottom_inset": int(dcfg.get("bottom_inset", 48))}
     full_path.write_text(render(digests, full=True, **kw), "utf-8")
     out.write_text(render(digests, **kw), "utf-8")
     return out

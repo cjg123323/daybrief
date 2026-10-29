@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import time
 from datetime import date
 from pathlib import Path
 
@@ -185,11 +186,21 @@ def test_background_image_is_copied_and_used(tmp_path: Path):
     bgdir.mkdir(), out.mkdir()
     assert dashboard.place_background(bgdir, out) is None                  # 비어 있으면 없음
     old, new = bgdir / "a.png", bgdir / "b.JPG"
-    old.write_bytes(b"png"), new.write_bytes(b"jpg")
+    old.write_bytes(b"png")
     os.utime(old, (1, 1))
+    time.sleep(0.05)  # '폴더에 들어온 순서'가 분명하도록 (생성 시각도 비교하므로)
+    new.write_bytes(b"jpg")
     url = dashboard.place_background(bgdir, out)
     assert url.startswith("bg.jpg?v=") and (out / "bg.jpg").read_bytes() == b"jpg"   # 가장 최근 파일
     html = dashboard.render([], background=url)
     assert 'class="has-bg"' in html and "background-image:url('bg.jpg?v=" in html
-    new.unlink(), old.unlink()
+    # 원본 날짜가 아주 오래된 사진을 나중에 넣어도(복사 시 수정 시각 보존) 새로 넣은 것이 선택된다
+    newer = bgdir / "c.png"
+    time.sleep(0.05)
+    newer.write_bytes(b"newest")
+    os.utime(newer, (1, 1))
+    url2 = dashboard.place_background(bgdir, out)
+    assert url2.startswith("bg.png?v=") and (out / "bg.png").read_bytes() == b"newest"
+    assert not (out / "bg.jpg").exists()
+    new.unlink(), old.unlink(), newer.unlink()
     assert dashboard.place_background(bgdir, out) is None and not list(out.glob("bg.*"))
