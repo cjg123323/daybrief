@@ -75,6 +75,15 @@ Claude Code는 오래된 로그를 지우므로 `~/.claude/settings.json`에 `"c
 `dashboard.background`(기본: `<profile.yaml 폴더>/background/`)에 이미지를 넣으면 가장 최근 파일이 대시보드 뒤에 깔리고,
 Daybrief 패널은 반투명 블러로 글씨를 띄운다. 이미지는 `dashboard/bg.*`로 복사된다 (Lively는 대시보드 폴더만 읽을 수 있음).
 
+## 논문 저장 (바탕화면 버튼)
+`profile.yaml`에 `save: {dir: "D:/papers"}`를 넣으면 논문 카드마다 **저장 흥미 · 나중에 · 인용** 버튼이 생긴다.
+- 누르면 `dir/<분류>/`에 `연도 1저자 - 제목.pdf`로 받는다. OA 위치(OpenAlex, arXiv·기관 저장소 우선)의 PDF만 받는다.
+- OA PDF를 못 받으면(구독 논문, 출판사가 자동 다운로드를 막음) OA 페이지나 도서관 경유 링크가 브라우저로 열리고,
+  폴더에는 그 링크(`.url`)가 남는다. 받은 PDF를 그 폴더에 넣으면 된다. 구독 논문은 자동으로 받지 않는다 (DESIGN §8.7).
+- `dir/daybrief.bib`에 BibTeX(doi.org), `dir/saved.jsonl`에 저장 기록이 쌓인다. 저장한 버튼은 파랗게 표시된다.
+- 버튼은 로컬 서버 `daybrief serve`(127.0.0.1만, 기기별 토큰)가 받는다. `install_windows.ps1`이 `save:`가 있으면
+  로그온 시 창 없이 뜨는 작업(`daybrief-serve`)으로 등록한다. 서버가 꺼져 있으면 버튼이 흐려진다. 로그: `data/logs/serve.log`.
+
 ## 새 소스 추가
 `src/daybrief/sources/<name>.py`에 `@register("<name>")` 클래스 하나 (`fetch(since, cfg) -> list[Item]`),
 `sources/__init__.py`에 import 한 줄. 코어는 수정하지 않습니다.

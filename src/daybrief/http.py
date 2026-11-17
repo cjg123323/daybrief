@@ -11,7 +11,7 @@ _last_hit: dict[str, float] = {}
 
 
 def get(url: str, *, params: dict | None = None, min_interval: float = 1.0,
-        retries: int = 3, timeout: float = 20.0) -> httpx.Response:
+        retries: int = 3, timeout: float = 20.0, headers: dict[str, str] | None = None) -> httpx.Response:
     host = urlparse(url).netloc
     wait = _last_hit.get(host, 0) + min_interval - time.monotonic()
     if wait > 0:
@@ -20,7 +20,7 @@ def get(url: str, *, params: dict | None = None, min_interval: float = 1.0,
     for attempt in range(retries):
         try:
             r = httpx.get(url, params=params, timeout=timeout, follow_redirects=True,
-                          headers={"User-Agent": USER_AGENT})
+                          headers={"User-Agent": USER_AGENT, **(headers or {})})
             _last_hit[host] = time.monotonic()
             if r.status_code in (429, 500, 502, 503, 504):
                 raise httpx.HTTPStatusError("retryable", request=r.request, response=r)

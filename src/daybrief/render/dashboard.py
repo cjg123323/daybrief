@@ -14,6 +14,7 @@ import shutil
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from daybrief.render.markdown import SECTIONS, paper_link_pairs
@@ -109,6 +110,15 @@ h2 { font-size:13px; font-weight:600; color:var(--ink-3); text-transform:upperca
 .card details.pairs li { margin:2px 0; }
 .card details.pairs .ev { color:var(--ink-3); font-size:12px; }
 .card pre { white-space:pre-wrap; font:inherit; margin:4px 0 0; }
+/* 논문 저장 버튼 (daybrief serve가 받는다) */
+.save { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; font-size:12px; color:var(--ink-3); }
+.save a { border:1px solid var(--line); border-radius:999px; padding:0 9px; color:var(--ink-2);
+  background:var(--card); }
+.save a:hover { text-decoration:none; border-color:var(--ink-3); color:var(--ink-1); }
+.save a.on { background:#3987e5; border-color:#3987e5; color:#0f0f0e; font-weight:600; }
+.save a.busy { opacity:.6; }
+.save .msg { color:var(--ink-3); }
+body.noserve .save a { opacity:.5; }
 .more { color:var(--ink-3); font-size:12px; margin:-2px 0 8px 4px; }
 .empty { color:var(--ink-3); padding:14px 4px; }
 footer { color:var(--ink-3); font-size:11px; margin-top:12px; }
@@ -190,6 +200,51 @@ SCROLL_JS = """
 """
 
 
+# 논문 저장 버튼. 서버(daybrief serve)에 닿으면 fetch로 저장하고 결과를 카드에 적는다.
+# 닿지 않으면(서버 꺼짐, 또는 바탕화면 브라우저가 로컬 요청을 막음) 버튼은 평범한 링크로 남아
+# 클릭 시 기본 브라우저가 같은 주소를 연다 → 서버가 결과 페이지를 보여준다.
+SAVE_JS = """
+(function () {
+  var API = '__API__', TOKEN = '__TOKEN__';
+  var boxes = document.querySelectorAll('.save');
+  if (!boxes.length) { return; }
+  function mark(box, cat) { var b = box.querySelector('a[data-cat="' + cat + '"]'); if (b) { b.classList.add('on'); } }
+  function click(e) {
+    e.preventDefault();
+    var a = e.currentTarget, box = a.parentNode, msg = box.querySelector('.msg');
+    if (a.classList.contains('busy')) { return; }
+    a.classList.add('busy'); msg.textContent = '저장 중…';
+    fetch(a.href + '&fmt=json').then(function (r) { return r.json(); }).then(function (res) {
+      a.classList.remove('busy');
+      if (res.error) { msg.textContent = res.error; return; }
+      mark(box, a.getAttribute('data-cat'));
+      msg.textContent = res.message + ' · ' + res.folder;
+    }).catch(function () { a.classList.remove('busy'); msg.textContent = '저장 서버에 연결 못 함 (daybrief serve)'; });
+  }
+  fetch(API + '/saved?token=' + TOKEN).then(function (r) { return r.json(); }).then(function (m) {
+    for (var i = 0; i < boxes.length; i++) {
+      var cats = m[boxes[i].getAttribute('data-id')] || [];
+      for (var c = 0; c < cats.length; c++) { mark(boxes[i], cats[c]); }
+      var links = boxes[i].querySelectorAll('a[data-cat]');
+      for (var k = 0; k < links.length; k++) { links[k].addEventListener('click', click); }
+    }
+  }).catch(function () {
+    document.body.classList.add('noserve');
+    for (var i = 0; i < boxes.length; i++) { boxes[i].title = '저장 서버(daybrief serve)에 연결 못 함'; }
+  });
+})();
+"""
+
+
+def _save_box(item_id: str, save: dict[str, Any]) -> str:
+    from daybrief.shelf import CATEGORIES  # 순환 import 방지
+
+    base = f"http://127.0.0.1:{int(save['port'])}/save?id={quote(item_id)}&token={quote(save['token'])}"
+    links = "".join(f'<a data-cat="{k}" href="{html.escape(f"{base}&cat={k}", quote=True)}" target="_blank" '
+                    f'rel="noopener">{html.escape(v)}</a>' for k, v in CATEGORIES.items())
+    return f'<div class="save" data-id="{html.escape(item_id, quote=True)}">저장 {links}<span class="msg"></span></div>'
+
+
 def _pane(key: str, content: str, *, rail: bool) -> str:
     bar = ('<div class="rail"><button class="up" title="위로">▲</button>'
            '<div class="track"><div class="thumb"></div></div>'
@@ -203,7 +258,8 @@ def _a(url: str, text: str, cls: str = "") -> str:
     return f'<a{c} href="{html.escape(url, quote=True)}" target="_blank" rel="noopener">{html.escape(text)}</a>'
 
 
-def _card(e: dict[str, Any], library: dict[str, Any] | None, *, extra: bool = False) -> str:
+def _card(e: dict[str, Any], library: dict[str, Any] | None, *, extra: bool = False,
+          save: dict[str, Any] | None = None) -> str:
     it, j = e["item"], e["judgement"]
     kind = it["kind"]
     venue = it["meta"].get("journal") or it["meta"].get("board") or it["source"]
@@ -224,6 +280,8 @@ def _card(e: dict[str, Any], library: dict[str, Any] | None, *, extra: bool = Fa
         rows = "".join(f'<li><b>{html.escape(p["need"])}</b> ↔ {html.escape(p["have"])}'
                        f'<span class="ev"> · {html.escape(p.get("evidence", ""))}</span></li>' for p in j["pairs"])
         parts.append(f'<details class="pairs"><summary>매칭 근거 {len(j["pairs"])}</summary><ul>{rows}</ul></details>')
+    if kind == "paper" and save:
+        parts.append(_save_box(it["id"], save))
     if e.get("summary"):
         s = e["summary"]
         parts.append(f'<details><summary>요약 (근거: {html.escape(s["basis"])})</summary>'
@@ -238,7 +296,7 @@ RIGHT_KINDS = ("notice", "job")                             # 행동 쪽: 공지
 
 def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_section: int,
          kinds: tuple[str, ...] | None = None, empty: str = "관련 항목이 없습니다.",
-         expandable: bool = False) -> str:
+         expandable: bool = False, save: dict[str, Any] | None = None) -> str:
     """expandable(바탕화면): 섹션의 모든 카드를 넣되 max_per_section 이후는 숨기고
     '더 보기' 버튼으로 페이지 안에서 펼친다. (Lively는 바탕화면을 https://<hash>.localhost/ 로 열어
     file:// 링크가 막히므로 별도 페이지로 보낼 수 없다)"""
@@ -252,7 +310,7 @@ def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_sect
             continue
         out.append(f"<h2>{html.escape(label)} ({len(group)})</h2>")
         shown = group if expandable else group[:max_per_section]
-        out += [_card(e, library, extra=i >= max_per_section) for i, e in enumerate(shown)]
+        out += [_card(e, library, extra=i >= max_per_section, save=save) for i, e in enumerate(shown)]
         if len(group) > max_per_section:
             rest = len(group) - max_per_section
             if expandable:
@@ -332,11 +390,12 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
            refresh_minutes: int = 10, max_per_section: int = 8, title: str = "Daybrief",
            progress_rows: list[dict[str, str]] | None = None, full: bool = False,
            background: str | None = None, bottom_inset: int = 48, open_days: int = 7,
-           today_date: date | None = None) -> str:
+           today_date: date | None = None, save: dict[str, Any] | None = None) -> str:
     """digests: 최신 날짜가 먼저.
     full=False (바탕화면, Lively): Lively는 휠을 넘겨주지 않으므로 열마다 클릭식 스크롤 막대.
       글은 자르지 않고, 섹션당 max_per_section개만 보이며 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
-    full=True (full.html, 탐색기에서 브라우저로 직접 열기): 모든 항목, 줄임 없음, 일반 스크롤."""
+    full=True (full.html, 탐색기에서 브라우저로 직접 열기): 모든 항목, 줄임 없음, 일반 스크롤.
+    save={"port","token"}: 논문 카드에 저장 버튼 (daybrief serve)."""
     if full:
         max_per_section = 10**6
     today = digests[0] if digests else {"date": "", "generated_at": "", "failures": [], "entries": []}
@@ -363,7 +422,7 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         # 두 열 (왼쪽 연구, 오른쪽 공지·지원사업). 각 열은 날짜별 묶음: 최근 open_days일은 펼침, 그 전은 접힘
         ref = today_date or _parse_date(today.get("date", "")) or date.today()
         kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section, "expandable": not full,
-                              "ref": ref, "open_days": open_days}
+                              "ref": ref, "open_days": open_days, "save": save}
         left = _column(digests, LEFT_KINDS, empty="관련 항목이 없습니다.", **kw)
         right = _column(digests, RIGHT_KINDS, empty="새 공지·지원사업 없음", **kw)
         if progress_rows:  # 진행 요약은 오른쪽 열 아래 (논문 카드가 길어 왼쪽은 공간이 모자람)
@@ -377,13 +436,17 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
     toggle = (' · <button class="linkbtn" data-act="toggle-all" data-label="전체 펼치기">전체 펼치기</button>'
               if has_extra else "")
     body[1] = body[1].replace("{TOGGLE_ALL}", toggle)
+    scripts = "" if full else SCROLL_JS
+    if save and digests:
+        scripts += SAVE_JS.replace("__API__", f"http://127.0.0.1:{int(save['port'])}").replace(
+            "__TOKEN__", quote(save["token"]))
     return (
         "<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
         f"<meta http-equiv=\"refresh\" content=\"{int(refresh_minutes) * 60}\">\n"
         f"<title>{html.escape(title)} {html.escape(today['date'])}</title>\n"
         f"<style>{CSS}\n:root {{ --inset-bottom:{max(0, int(bottom_inset))}px; }}</style></head>\n"
         + _body_tag(full, background) + "\n"
-        + "\n".join(body) + ("" if full else f"\n<script>{SCROLL_JS}</script>") + "\n</body></html>\n"
+        + "\n".join(body) + (f"\n<script>{scripts}</script>" if scripts else "") + "\n</body></html>\n"
     )
 
 
@@ -449,7 +512,9 @@ def write(cfg: dict[str, Any]) -> Path:
     out = base / dcfg.get("dir", "dashboard") / "index.html"
     full_path = out.parent / "full.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    from daybrief import progress  # 순환 import 방지 (progress → profiling → ...)
+    from daybrief import progress, shelf  # 순환 import 방지 (progress → profiling → ...)
+
+    ss = shelf.settings(cfg)
 
     kw: dict[str, Any] = {"library": cfg.get("library"), "refresh_minutes": int(dcfg.get("refresh_minutes", 10)),
                           "max_per_section": int(dcfg.get("max_per_section", 6)),
@@ -460,7 +525,9 @@ def write(cfg: dict[str, Any]) -> Path:
                           # 최근 며칠을 펼쳐 둘지. 기준은 마지막 다이제스트가 아니라 오늘
                           # (며칠 안 돌았어도 정확히 접힘)
                           "open_days": int(dcfg.get("open_days", 7)),
-                          "today_date": datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Seoul"))).date()}
+                          "today_date": datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Seoul"))).date(),
+                          # 논문 저장 버튼: save.dir이 있을 때만 (토큰은 대시보드 폴더에, git에 안 올라감)
+                          "save": {"port": ss["port"], "token": shelf.token(cfg)} if ss else None}
     full_path.write_text(render(digests, full=True, **kw), "utf-8")
     out.write_text(render(digests, **kw), "utf-8")
     return out

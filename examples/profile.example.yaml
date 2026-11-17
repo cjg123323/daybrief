@@ -29,6 +29,12 @@ library:
   proxy_prefix: ""      # TODO: 도서관 프록시 접두어 (도서관 홈페이지에서 확인). 비우면 DOI 링크 그대로
   pdf_inbox: false      # true면 inbox/papers/에 직접 넣은 PDF를 로컬에서 본문 요약 (opt-in)
 
+# 바탕화면 논문 카드의 '저장 흥미/나중에/인용' 버튼 → dir/<분류>/ 에 PDF (OA만) + daybrief.bib + saved.jsonl
+# 구독 논문은 받지 않고 OA 페이지나 도서관 경유 링크를 브라우저로 연다 (원칙 9). git 동기화 대상 아님
+save:
+  dir: "~/Documents/papers"
+  port: 8765          # daybrief serve가 127.0.0.1에서만 연다
+
 # 3단계: 바탕화면 HTML. `daybrief run` / `daybrief render`가 <profile.yaml 폴더>/dashboard/index.html을 쓴다.
 # Lively Wallpaper에 이 파일을 웹 배경화면으로 등록하면 바탕화면에 뜬다 (README "바탕화면" 참고).
 dashboard:

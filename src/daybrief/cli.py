@@ -252,6 +252,28 @@ def cmd_init_journals(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """바탕화면 '저장' 버튼용 로컬 서버 (127.0.0.1). 로그온 시 작업 스케줄러가 띄운다 (install_windows.ps1)."""
+    import logging
+
+    from daybrief import serve
+
+    cfg = config_mod.load(args.config)
+    log_dir = Path(cfg["_base_dir"]) / cfg["data_dir"] / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handlers: list[logging.Handler] = [logging.FileHandler(log_dir / "serve.log", encoding="utf-8")]
+    if sys.stderr is not None:  # pythonw(창 없이 실행)에는 stderr가 없다
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=handlers)
+    srv = serve.make_server(cfg, args.port)
+    logging.getLogger("daybrief.serve").info("listening on http://127.0.0.1:%d", srv.server_address[1])
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="daybrief")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -286,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
     rd = sub.add_parser("render", help="저장된 digest JSON으로 바탕화면 HTML만 재생성 (LLM·네트워크 없음)")
     rd.add_argument("--config", required=True)
     rd.set_defaults(func=cmd_render)
+    sv = sub.add_parser("serve", help="바탕화면 논문 '저장' 버튼용 로컬 서버 (127.0.0.1)")
+    sv.add_argument("--config", required=True)
+    sv.add_argument("--port", type=int, help="기본: profile.yaml의 save.port (8765)")
+    sv.set_defaults(func=cmd_serve)
     jr = sub.add_parser("resolve-journals", help="journals.yaml의 빈 ISSN을 OpenAlex로 채움")
     jr.add_argument("path")
     jr.add_argument("--mailto")

@@ -48,5 +48,6 @@ daybrief init-profile --roots D:\research --out-dir ../daybrief-me --privacy ../
 daybrief init-journals --roots D:\research --out-dir ../daybrief-me --privacy ../daybrief-me/init_profile_privacy.yaml   # Zotero 없을 때 PDF→OpenAlex로 저널 후보
 daybrief run --config ../daybrief-me/profile.yaml       # 전체 수집 + 다이제스트
 daybrief run --config ... --only openalex --dry-run     # 소스 하나만, LLM 호출 없이
+daybrief serve --config ../daybrief-me/profile.yaml     # 바탕화면 논문 '저장' 버튼용 로컬 서버 (보통 작업 스케줄러가 띄움)
 pytest
 ```

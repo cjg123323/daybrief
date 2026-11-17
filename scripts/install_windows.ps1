@@ -9,6 +9,8 @@ daybrief를 Windows 작업 스케줄러에 등록한다 (로그온 시 + 매일 
 - 경로는 등록 시점의 절대경로로 고정된다. 레포를 옮기면 다시 등록할 것.
 - ANTHROPIC_API_KEY는 사용자 환경변수에 있어야 한다 (작업은 현재 사용자 권한으로 실행).
 - 로그: <profile.yaml 폴더>\data\logs\<날짜>.log
+- profile.yaml에 save: 가 있으면 논문 저장 서버(daybrief serve)도 로그온 시 창 없이 띄운다 (작업 이름 <TaskName>-serve).
+  로그: data\logs\serve.log
 #>
 param(
     [string]$Config = (Join-Path $PSScriptRoot "..\..\daybrief-me\profile.yaml"),
@@ -19,8 +21,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ($Uninstall) {
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    Write-Output "removed task '$TaskName'"
+    foreach ($t in @($TaskName, "$TaskName-serve")) {
+        if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
+            Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $t -Confirm:$false
+            Write-Output "removed task '$t'"
+        }
+    }
     exit 0
 }
 
@@ -49,3 +56,16 @@ Write-Output "  config: $Config"
 Write-Output "  logs:   $logDir"
 Write-Output "  dashboard: $(Join-Path (Split-Path $Config -Parent) "dashboard/index.html")  (Lively Wallpaper에 등록, README 참고)"
 Write-Output "지금 한 번 돌려보기:  Start-ScheduledTask -TaskName $TaskName"
+
+# 논문 저장 서버: 로그온 시 pythonw(콘솔 창 없음)로 계속 실행. 죽으면 1분 뒤 재시작
+if (Select-String -Path $Config -Pattern '^save:' -Quiet) {
+    $pyw = Join-Path $root ".venv\Scripts\pythonw.exe"
+    $serveAction = New-ScheduledTaskAction -Execute $pyw -Argument "-m daybrief.cli serve --config `"$Config`"" `
+        -WorkingDirectory $root
+    $serveSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+    Register-ScheduledTask -TaskName "$TaskName-serve" -Action $serveAction `
+        -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings $serveSettings -Force | Out-Null
+    Start-ScheduledTask -TaskName "$TaskName-serve"
+    Write-Output "registered task '$TaskName-serve': 논문 저장 서버 (로그온 시, 지금 시작함)"
+}
