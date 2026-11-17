@@ -1,5 +1,6 @@
 """render/dashboard: digest JSON → 단일 HTML. 네트워크 없음."""
 import json
+from datetime import date
 from pathlib import Path
 
 from daybrief import config as config_mod
@@ -27,13 +28,19 @@ def test_render_escapes_scraped_text_and_links():
 def test_render_sections_failures_and_older_days_collapsed():
     today = {"date": "2026-10-27", "generated_at": "", "failures": [{"source": "html_list", "error": "timeout"}],
              "entries": [entry("1"), entry("2", kind="notice", title="장학", score=0.6, board="knu")]}
-    yesterday = {"date": "2026-10-26", "generated_at": "", "failures": [], "entries": [entry("9", title="어제")]}
-    out = dashboard.render([today, yesterday])
+    yesterday = {"date": "2026-10-26", "generated_at": "", "failures": [],
+                 "entries": [entry("9", title="어제논문"), entry("8", kind="notice", title="어제공지", board="knu")]}
+    week_ago = {"date": "2026-10-20", "generated_at": "", "failures": [], "entries": [entry("7", title="오래된")]}
+    out = dashboard.render([today, yesterday, week_ago], today_date=date(2026, 10, 27))
     assert "⚠ 수집 실패" in out and "html_list (timeout)" in out
     assert "논문 (1)" in out and "공지·지원사업 (1)" in out
-    assert '<details class="day" open><summary>오늘' in out
-    assert '<details class="day"><summary>2026-10-26 · 1건' in out
-    assert out.index("장학") > out.index("논문 (1)")  # 논문 섹션이 먼저
+    assert '<details class="day" open><summary>오늘 · 10-27 (화) · 1건' in out
+    # 최근 7일은 펼침 — 논문도 공지도 (공지는 오른쪽 열에 날짜별로 일주일 남는다)
+    assert out.count('<details class="day" open><summary>어제 · 10-26 (월) · 1건') == 2
+    assert '<details class="day"><summary>10-20 (화) · 1건' in out          # 7일 전 → 접힘
+    assert out.index("장학") > out.index("논문 (1)")  # 왼쪽(논문) 열이 먼저
+    # 오른쪽 열: 오늘 공지 → 어제 공지 순
+    assert out.index("어제공지") > out.index("장학")
 
 
 def test_render_caps_per_section_and_handles_empty():

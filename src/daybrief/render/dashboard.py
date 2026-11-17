@@ -11,8 +11,10 @@ from __future__ import annotations
 import html
 import json
 import shutil
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from daybrief.render.markdown import SECTIONS, paper_link_pairs
 
@@ -264,6 +266,41 @@ def _day(digest: dict[str, Any], *, library: dict[str, Any] | None, max_per_sect
     return "\n".join(out)
 
 
+WEEKDAYS = "월화수목금토일"
+
+
+def _parse_date(s: str) -> date | None:
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
+def _day_label(d: date | None, ref: date, raw: str) -> str:
+    if d is None:
+        return html.escape(raw)
+    age = (ref - d).days
+    base = f"{d.month:02d}-{d.day:02d} ({WEEKDAYS[d.weekday()]})"
+    return {0: f"오늘 · {base}", 1: f"어제 · {base}"}.get(age, base)
+
+
+def _column(digests: list[dict[str, Any]], kinds: tuple[str, ...], *, ref: date, open_days: int, empty: str,
+            **kw: Any) -> str:
+    """한 열의 날짜별 묶음. 최근 open_days일(오늘 포함)은 펼치고, 그보다 오래된 날은 접는다.
+    그날 이 열에 해당하는 항목이 없으면 묶음을 만들지 않는다 (가장 최근 날은 '없음' 문구로 남김)."""
+    out = []
+    for i, d in enumerate(digests):
+        n = sum(1 for e in d.get("entries", []) if e["item"]["kind"] in kinds)
+        if n == 0 and i > 0:
+            continue
+        day = _parse_date(d.get("date", ""))
+        opened = " open" if day is None or (ref - day).days < open_days else ""
+        content = _day(d, kinds=kinds, empty=empty, **kw)
+        out.append(f'<details class="day"{opened}><summary>{_day_label(day, ref, d.get("date", ""))} · {n}건'
+                   f'</summary>{content}</details>')
+    return "\n".join(out)
+
+
 def _progress(rows: list[dict[str, str]], *, link: bool = True) -> str:
     """프로젝트별 최근 일간 요약 카드 + 주간 요약(접힘). 링크는 로컬 요약 파일 (원칙 2: 근거 = 로그 요약 파일).
     link=False(바탕화면): Lively에서 file:// 링크는 열리지 않으므로 제목만 (본문은 전부 보인다)."""
@@ -294,7 +331,8 @@ def _progress(rows: list[dict[str, str]], *, link: bool = True) -> str:
 def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = None,
            refresh_minutes: int = 10, max_per_section: int = 8, title: str = "Daybrief",
            progress_rows: list[dict[str, str]] | None = None, full: bool = False,
-           background: str | None = None, bottom_inset: int = 48) -> str:
+           background: str | None = None, bottom_inset: int = 48, open_days: int = 7,
+           today_date: date | None = None) -> str:
     """digests: 최신 날짜가 먼저.
     full=False (바탕화면, Lively): Lively는 휠을 넘겨주지 않으므로 열마다 클릭식 스크롤 막대.
       글은 자르지 않고, 섹션당 max_per_section개만 보이며 나머지는 '더 보기'/'전체 펼치기'로 페이지 안에서 펼친다.
@@ -322,19 +360,16 @@ def render(digests: list[dict[str, Any]], *, library: dict[str, Any] | None = No
         if progress_rows:
             body.append(_progress(progress_rows))
     else:
-        # 오늘: 두 열 (왼쪽 연구, 오른쪽 공지·지원사업)
-        kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section, "expandable": not full}
-        left = [_day(today, kinds=LEFT_KINDS, empty="" if today.get("entries") else "관련 항목이 없습니다.", **kw)]
-        for d in digests[1:]:  # 지난 날짜는 왼쪽 열 아래에 접어서
-            left.append(f'<details class="day"><summary>{html.escape(d["date"])} · {len(d.get("entries", []))}건'
-                        f'</summary>{_day(d, **kw)}</details>')
-        # 진행 요약은 오른쪽 열 아래 (논문 카드가 길어 왼쪽은 공간이 모자람)
-        right = _day(today, kinds=RIGHT_KINDS, empty="새 공지·지원사업 없음", **kw)
-        if progress_rows:
+        # 두 열 (왼쪽 연구, 오른쪽 공지·지원사업). 각 열은 날짜별 묶음: 최근 open_days일은 펼침, 그 전은 접힘
+        ref = today_date or _parse_date(today.get("date", "")) or date.today()
+        kw: dict[str, Any] = {"library": library, "max_per_section": max_per_section, "expandable": not full,
+                              "ref": ref, "open_days": open_days}
+        left = _column(digests, LEFT_KINDS, empty="관련 항목이 없습니다.", **kw)
+        right = _column(digests, RIGHT_KINDS, empty="새 공지·지원사업 없음", **kw)
+        if progress_rows:  # 진행 요약은 오른쪽 열 아래 (논문 카드가 길어 왼쪽은 공간이 모자람)
             right += _progress(progress_rows, link=full)
-        body.append(f'<details class="day" open><summary>오늘 · {len(today.get("entries", []))}건</summary>'
-                    f'<div class="grid">{_pane("left", "".join(left), rail=not full)}'
-                    f'{_pane("right", right, rail=not full)}</div></details>')
+        body.append(f'<div class="grid">{_pane("left", left, rail=not full)}'
+                    f'{_pane("right", right, rail=not full)}</div>')
     body.append(f'<footer>daybrief · {refresh_minutes}분마다 자동 새로고침 · '
                 '클릭하면 원문이 브라우저에서 열림</footer>')
     body.append("</div>")
@@ -410,7 +445,7 @@ def write(cfg: dict[str, Any]) -> Path:
     index 경로를 돌려준다. 바탕화면에서 full.html로 링크하지 않는다 (Lively에서 file:// 링크는 막힘)."""
     base = Path(cfg["_base_dir"])
     dcfg = cfg.get("dashboard") or {}
-    digests = load_recent(base / cfg["data_dir"] / "digest", int(dcfg.get("days", 3)))
+    digests = load_recent(base / cfg["data_dir"] / "digest", int(dcfg.get("days", 14)))
     out = base / dcfg.get("dir", "dashboard") / "index.html"
     full_path = out.parent / "full.html"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -421,7 +456,11 @@ def write(cfg: dict[str, Any]) -> Path:
                           "progress_rows": progress.latest(cfg),
                           "background": place_background(base / dcfg.get("background", "background"), out.parent),
                           # 작업표시줄 높이(px). Windows 11 기본 48, 자동 숨김이면 0
-                          "bottom_inset": int(dcfg.get("bottom_inset", 48))}
+                          "bottom_inset": int(dcfg.get("bottom_inset", 48)),
+                          # 최근 며칠을 펼쳐 둘지. 기준은 마지막 다이제스트가 아니라 오늘
+                          # (며칠 안 돌았어도 정확히 접힘)
+                          "open_days": int(dcfg.get("open_days", 7)),
+                          "today_date": datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Seoul"))).date()}
     full_path.write_text(render(digests, full=True, **kw), "utf-8")
     out.write_text(render(digests, **kw), "utf-8")
     return out

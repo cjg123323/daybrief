@@ -324,7 +324,11 @@ def latest(cfg: dict[str, Any]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     if not out_dir.exists():
         return rows
+    # 설정에서 뺀 프로젝트는 요약 파일(기록)은 남기되 바탕화면에는 보이지 않게
+    active = {_safe(p["name"]) for p in (cfg.get("progress") or {}).get("projects") or [] if p.get("name")}
     for proj_dir in sorted(p for p in out_dir.iterdir() if p.is_dir()):
+        if active and proj_dir.name not in active:
+            continue
         for period in ("daily", "weekly"):
             files = sorted((proj_dir / period).glob("*.md"))
             if files:
